@@ -3,3 +3,4 @@ pub mod error;
 pub mod services;
 
 pub use error::{AppError, AppResult};
+pub use services::DocumentPermissionService;

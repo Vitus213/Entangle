@@ -44,6 +44,7 @@ async fn main() -> anyhow::Result<()> {
         .nest("/api/auth", routes::user_public_routes())
         // Protected routes (auth required)
         .nest("/api", routes::user_protected_routes())
+        .nest("/api", routes::document_routes())
         .layer(cors)
         .with_state(pool);
 

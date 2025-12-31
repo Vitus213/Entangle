@@ -1,1 +1,3 @@
-// Business services will be implemented here
+pub mod document_permission;
+
+pub use document_permission::DocumentPermissionService;
