@@ -1,0 +1,3 @@
+-- openGauss UUID support
+-- Note: UUID generation will be handled by application layer
+-- This migration is kept for future extension enablement
