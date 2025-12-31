@@ -65,6 +65,7 @@ async fn main() -> anyhow::Result<()> {
         // Protected routes (auth required)
         .nest("/api", routes::user_protected_routes())
         .nest("/api", routes::document_routes())
+        .nest("/api", routes::folder_routes())
         .layer(cors)
         .layer(axum::Extension(ws_hub))
         .with_state(pool);
