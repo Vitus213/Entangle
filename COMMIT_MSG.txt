@@ -1,0 +1,150 @@
+feat: 实现完整的 RBAC 权限管理系统
+
+实现了基于角色的访问控制（RBAC）系统，包含用户认证、授权和权限管理的完整功能。
+
+## 核心功能
+
+### 1. 认证系统 (auth crate)
+- JWT token 生成和验证
+- Argon2 密码加密
+- 权限检查服务 (PermissionService)
+- 支持多种权限验证方式（单个、任意、全部）
+
+### 2. 数据库层 (db crate)
+- 新增用户、角色、权限的数据模型
+- 实现完整的 Repository 模式
+  - UserRepository: 用户 CRUD 和查询
+  - RoleRepository: 角色管理和权限关联
+  - PermissionRepository: 权限管理和用户权限查询
+- 支持分页查询和复杂关联查询
+
+### 3. API 层 (api crate)
+- 实现认证中间件 (AuthUser extractor)
+- 公开端点：用户注册、登录
+- 受保护端点：用户信息查询、权限查询
+- 管理员端点：用户管理、角色分配
+- 集成 CORS 支持
+
+### 4. 统一错误处理 (core crate)
+- 定义 AppError 错误类型
+- 自动转换为友好的 HTTP 响应
+- 支持多种错误场景（认证、授权、数据库等）
+
+### 5. 数据库迁移
+- 创建 4 张核心表：users, roles, permissions, role_permissions
+- 预置 3 种角色：admin, editor, viewer
+- 预置 6 种权限：document:*, user:manage, system:config
+- 配置角色-权限关联关系
+- 修复 TIMESTAMPTZ 类型兼容性问题
+
+## 技术细节
+
+### 数据库
+- 使用 openGauss 5.1.0（PostgreSQL 兼容）
+- 采用 UUID 作为主键
+- TIMESTAMPTZ 时间戳类型
+- 完整的外键约束和索引
+
+### 安全性
+- Argon2 密码加密算法
+- JWT token 7天有效期
+- 每个请求验证用户状态
+- 权限隔离验证
+
+### 权限模型
+- admin: 拥有全部 6 个权限
+- editor: 拥有所有文档操作权限
+- viewer: 仅拥有文档读取权限
+
+## 新增文件
+
+### 代码文件
+- crates/api/src/middleware/auth.rs - 认证中间件
+- crates/api/src/middleware/mod.rs
+- crates/api/src/routes/users.rs - 用户路由
+- crates/api/src/routes/mod.rs
+- crates/auth/src/permission.rs - 权限服务
+- crates/core/src/error.rs - 错误处理
+- crates/db/src/models/user.rs - 用户模型
+- crates/db/src/models/role.rs - 角色模型
+- crates/db/src/models/permission.rs - 权限模型
+- crates/db/src/repository/user.rs - 用户仓库
+- crates/db/src/repository/role.rs - 角色仓库
+- crates/db/src/repository/permission.rs - 权限仓库
+- crates/db/src/repository/mod.rs
+
+### 数据库迁移
+- migrations/20251231160725_create_role_permissions_table.sql
+
+### 文档和测试
+- docs/AUTH_README.md - 认证系统文档
+- docs/TESTING.md - 测试指南
+- scripts/full_test.sh - 完整自动化测试脚本
+- scripts/test_api.sh - 基础 API 测试脚本
+
+## 修改的文件
+
+### 依赖配置
+- crates/api/Cargo.toml - 新增 axum-extra, sqlx 依赖
+- crates/auth/Cargo.toml - 新增 sqlx 依赖
+- crates/core/Cargo.toml - 新增 axum, sqlx, tracing 依赖
+
+### 代码更新
+- crates/api/src/main.rs - 集成路由和中间件
+- crates/auth/src/jwt.rs - Claims 添加 Clone trait
+- crates/auth/src/lib.rs - 导出新模块
+- crates/core/src/lib.rs - 导出错误处理
+- crates/db/src/lib.rs - 导出 repository
+- crates/db/src/models/mod.rs - 导出新模型
+
+### 数据库迁移更新
+- migrations/20251231160722_create_roles_table.sql - TIMESTAMP → TIMESTAMPTZ
+- migrations/20251231160724_create_users_table.sql - TIMESTAMP → TIMESTAMPTZ
+
+## API 端点
+
+### 公开端点
+- POST /api/auth/register - 用户注册
+- POST /api/auth/login - 用户登录
+
+### 受保护端点
+- GET /api/me - 获取当前用户信息
+- GET /api/me/permissions - 获取当前用户权限
+
+### 管理员端点
+- GET /api/users - 列出所有用户
+- GET /api/users/:id - 获取指定用户
+- POST /api/users/:id/role - 修改用户角色
+
+## 测试
+
+已通过以下测试：
+- ✅ 用户注册成功
+- ✅ 用户登录成功
+- ✅ 获取用户信息（带认证）
+- ✅ 获取用户权限（viewer 只有 document:read）
+- ✅ 管理员拥有全部权限
+- ✅ 权限隔离（普通用户无法访问管理员功能）
+- ✅ Token 验证
+- ✅ 无效 token 被拒绝
+
+运行测试：
+```bash
+./scripts/full_test.sh
+```
+
+## Breaking Changes
+
+无
+
+## 后续工作
+
+- [ ] 实现邮箱验证功能
+- [ ] 添加 refresh token 机制
+- [ ] 实现密码重置功能
+- [ ] 添加更多业务权限（blog, comment 等）
+- [ ] 实现审计日志
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+Co-Authored-By: Claude <noreply@anthropic.com>

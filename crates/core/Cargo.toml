@@ -8,10 +8,13 @@ license.workspace = true
 [dependencies]
 entangle-db = { path = "../db" }
 
+axum.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sqlx.workspace = true
 uuid.workspace = true
 chrono.workspace = true
+tracing.workspace = true
 anyhow.workspace = true
 thiserror.workspace = true
 async-trait.workspace = true

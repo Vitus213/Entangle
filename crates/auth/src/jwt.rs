@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use chrono::{Duration, Utc};
 use uuid::Uuid;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Claims {
     pub sub: String,  // Subject (user ID)
     pub exp: i64,     // Expiration time
