@@ -1,0 +1,15 @@
+[package]
+name = "entangle-auth"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+argon2.workspace = true
+jsonwebtoken.workspace = true
+serde.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true

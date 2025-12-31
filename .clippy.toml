@@ -1,0 +1,5 @@
+# Clippy configuration
+# Add this to Cargo.toml in workspace root
+
+# Recommended clippy lints for the project
+# Run with: cargo clippy -- -D warnings
