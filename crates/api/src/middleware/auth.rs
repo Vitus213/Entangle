@@ -1,6 +1,6 @@
 use axum::{
     async_trait,
-    extract::{FromRef, FromRequestParts},
+    extract::{FromRef, FromRequestParts, Query},
     http::{request::Parts, StatusCode},
     RequestPartsExt,
 };
@@ -10,8 +10,14 @@ use axum_extra::{
 };
 use entangle_auth::{verify_token, Claims};
 use entangle_db::UserRepository;
+use serde::Deserialize;
 use sqlx::PgPool;
 use uuid::Uuid;
+
+#[derive(Deserialize)]
+struct TokenQuery {
+    token: Option<String>,
+}
 
 /// Authenticated user extracted from JWT token
 #[derive(Debug, Clone)]
@@ -33,19 +39,30 @@ where
         let jwt_secret = std::env::var("JWT_SECRET")
             .unwrap_or_else(|_| "your-secret-key".to_string());
 
-        // Extract Authorization header
-        let TypedHeader(Authorization(bearer)) = parts
-            .extract::<TypedHeader<Authorization<Bearer>>>()
-            .await
-            .map_err(|_| {
+        // Try to get token from Authorization header first
+        let token = if let Ok(TypedHeader(Authorization(bearer))) =
+            parts.extract::<TypedHeader<Authorization<Bearer>>>().await
+        {
+            bearer.token().to_string()
+        } else {
+            // Fallback to query parameter (for WebSocket connections)
+            let query = parts.extract::<Query<TokenQuery>>().await.map_err(|_| {
                 (
                     StatusCode::UNAUTHORIZED,
-                    "Missing or invalid Authorization header".to_string(),
+                    "Missing Authorization header or token query parameter".to_string(),
                 )
             })?;
 
+            query.token.clone().ok_or_else(|| {
+                (
+                    StatusCode::UNAUTHORIZED,
+                    "Missing token in query parameters".to_string(),
+                )
+            })?
+        };
+
         // Verify token
-        let claims = verify_token(bearer.token(), &jwt_secret).map_err(|e| {
+        let claims = verify_token(&token, &jwt_secret).map_err(|e| {
             (
                 StatusCode::UNAUTHORIZED,
                 format!("Invalid token: {}", e),

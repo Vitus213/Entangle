@@ -1,6 +1,6 @@
 use crate::models::{
-    AddCollaborator, CollaboratorPermission, CreateDocument, Document, DocumentCollaborator,
-    DocumentListItem, DocumentOwner, DocumentResponse, UpdateDocument,
+    AddCollaborator, CollaboratorPermission, CollaboratorResponse, CreateDocument, Document,
+    DocumentCollaborator, DocumentListItem, DocumentOwner, DocumentResponse, UpdateDocument,
 };
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -278,6 +278,27 @@ impl DocumentRepository {
         .await
     }
 
+    /// 通过邮箱添加协作者
+    pub async fn add_collaborator_by_email(
+        pool: &PgPool,
+        doc_id: Uuid,
+        email: &str,
+        permission: CollaboratorPermission,
+    ) -> Result<DocumentCollaborator, sqlx::Error> {
+        // 首先通过邮箱查找用户
+        let user_id: Uuid = sqlx::query_scalar("SELECT id FROM users WHERE email = $1")
+            .bind(email)
+            .fetch_one(pool)
+            .await?;
+
+        // 使用找到的用户 ID 添加协作者
+        let collab = AddCollaborator {
+            user_id,
+            permission,
+        };
+        Self::add_collaborator(pool, doc_id, &collab).await
+    }
+
     /// 移除协作者
     pub async fn remove_collaborator(
         pool: &PgPool,
@@ -299,6 +320,30 @@ impl DocumentRepository {
     ) -> Result<Vec<DocumentCollaborator>, sqlx::Error> {
         sqlx::query_as::<_, DocumentCollaborator>(
             "SELECT * FROM document_collaborators WHERE document_id = $1",
+        )
+        .bind(doc_id)
+        .fetch_all(pool)
+        .await
+    }
+
+    /// 获取文档的协作者列表（包含用户信息）
+    pub async fn list_collaborators_with_users(
+        pool: &PgPool,
+        doc_id: Uuid,
+    ) -> Result<Vec<CollaboratorResponse>, sqlx::Error> {
+        sqlx::query_as::<_, CollaboratorResponse>(
+            r#"
+            SELECT
+                dc.user_id,
+                u.nickname,
+                u.email,
+                dc.permission,
+                dc.created_at
+            FROM document_collaborators dc
+            JOIN users u ON dc.user_id = u.id
+            WHERE dc.document_id = $1
+            ORDER BY dc.created_at ASC
+            "#,
         )
         .bind(doc_id)
         .fetch_all(pool)

@@ -6,7 +6,10 @@ use axum::{
     Extension,
 };
 use entangle_collab::BroadcastMessage;
+use entangle_core::{AppError, DocumentPermissionService};
+use entangle_db::DocumentRepository;
 use futures::{sink::SinkExt, stream::StreamExt};
+use sqlx::PgPool;
 use std::time::Duration;
 use tokio::time::{interval, timeout};
 use uuid::Uuid;
@@ -22,8 +25,30 @@ pub async fn websocket_handler(
     Path(doc_id): Path<Uuid>,
     user: AuthUser,
     Extension(hub): Extension<WsHub>,
-) -> Response {
-    ws.on_upgrade(move |socket| handle_socket(socket, doc_id, user.user_id, hub))
+    Extension(pool): Extension<PgPool>,
+) -> Result<Response, AppError> {
+    // 检查文档是否存在
+    let doc = DocumentRepository::find_by_id(&pool, doc_id)
+        .await
+        .map_err(|e| AppError::Internal(format!("数据库错误: {}", e)))?
+        .ok_or_else(|| AppError::NotFound("文档不存在".to_string()))?;
+
+    // 检查用户是否有读取权限（WebSocket 需要至少读取权限）
+    if !DocumentPermissionService::can_read(&pool, user.user_id, doc_id)
+        .await
+        .map_err(|e| AppError::Internal(format!("权限检查失败: {}", e)))?
+    {
+        return Err(AppError::Forbidden("无权访问该文档".to_string()));
+    }
+
+    tracing::info!(
+        "User {} connecting to document {} (owner: {})",
+        user.user_id,
+        doc_id,
+        doc.owner_id
+    );
+
+    Ok(ws.on_upgrade(move |socket| handle_socket(socket, doc_id, user.user_id, hub)))
 }
 
 async fn handle_socket(socket: WebSocket, doc_id: Uuid, user_id: Uuid, hub: WsHub) {
@@ -44,11 +69,10 @@ async fn handle_socket(socket: WebSocket, doc_id: Uuid, user_id: Uuid, hub: WsHu
     room.user_join(user_id);
     tracing::info!("User {} joined document {}", user_id, doc_id);
 
-    // 发送当前文档状态
-    let state = room.get_state();
-    let state_hex = hex_encode(&state);
+    // 发送当前文档状态（方案一：发送文本内容）
+    let text_content = room.get_text_content();
 
-    if let Ok(msg) = serde_json::to_string(&WsMessage::Sync { update: state_hex }) {
+    if let Ok(msg) = serde_json::to_string(&WsMessage::Sync { update: text_content }) {
         if sender.send(Message::Text(msg)).await.is_err() {
             tracing::error!("Failed to send initial state to user {}", user_id);
             room.user_leave(&user_id);
@@ -187,12 +211,24 @@ async fn handle_client_message(
 ) -> bool {
     match msg {
         WsMessage::Sync { update } => {
+            // 方案一：简化文本同步模式
+            // 尝试 hex 解码，如果失败则视为纯文本内容
             if let Ok(update_bytes) = hex_decode(&update) {
+                // CRDT 模式：应用二进制更新
                 if room.apply_update(&update_bytes, user_id).is_ok() {
-                    tracing::debug!("Applied update for doc {} from user {}", room.doc_id(), user_id);
+                    tracing::debug!("Applied CRDT update for doc {} from user {}", room.doc_id(), user_id);
                     return true;
                 } else {
-                    tracing::warn!("Failed to apply update from user {}", user_id);
+                    tracing::warn!("Failed to apply CRDT update from user {}", user_id);
+                }
+            } else {
+                // 简化模式：直接用纯文本替换文档内容
+                if room.set_text_content(&update, user_id).is_ok() {
+                    tracing::debug!("Applied text update for doc {} from user {} ({} bytes)",
+                        room.doc_id(), user_id, update.len());
+                    return true;
+                } else {
+                    tracing::warn!("Failed to apply text update from user {}", user_id);
                 }
             }
         }
@@ -209,6 +245,7 @@ async fn handle_client_message(
 fn should_forward(msg: &BroadcastMessage, current_user: Uuid) -> bool {
     match msg {
         BroadcastMessage::DocUpdate { from_user, .. } => *from_user != current_user,
+        BroadcastMessage::TextUpdate { from_user, .. } => *from_user != current_user,
         BroadcastMessage::AwarenessUpdate { user_id, .. } => *user_id != current_user,
         BroadcastMessage::UserJoined { user_id } => *user_id != current_user,
         BroadcastMessage::UserLeft { user_id } => *user_id != current_user,
@@ -221,6 +258,11 @@ fn broadcast_to_ws_message(msg: BroadcastMessage) -> Option<WsMessage> {
         BroadcastMessage::DocUpdate { update, .. } => {
             Some(WsMessage::Sync {
                 update: hex_encode(&update),
+            })
+        }
+        BroadcastMessage::TextUpdate { content, .. } => {
+            Some(WsMessage::Sync {
+                update: content,
             })
         }
         BroadcastMessage::AwarenessUpdate { state, .. } => {

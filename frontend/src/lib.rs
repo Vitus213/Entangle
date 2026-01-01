@@ -3,6 +3,8 @@ use leptos_meta::*;
 use leptos_router::*;
 use serde::{Deserialize, Serialize};
 use gloo_net::http::Request;
+use wasm_bindgen::closure::Closure;
+use wasm_bindgen::JsCast;
 
 // ===== 共享类型 =====
 
@@ -43,9 +45,25 @@ struct Document {
     id: String,
     title: String,
     content: String,
+    owner: DocumentOwner,
     is_public: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    folder_id: Option<String>,
+    created_at: String,
+    updated_at: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct DocumentOwner {
+    id: String,
+    nickname: String,
+    email: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct DocumentListItem {
+    id: String,
+    title: String,
+    owner: DocumentOwner,
+    is_public: bool,
     created_at: String,
     updated_at: String,
 }
@@ -109,9 +127,73 @@ struct CreateTagRequest {
     color: String,
 }
 
+// 协作者相关类型
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct CollaboratorResponse {
+    user_id: String,
+    nickname: String,
+    email: String,
+    permission: CollaboratorPermission,
+    created_at: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum CollaboratorPermission {
+    Read,
+    Write,
+    Admin,
+}
+
+impl std::fmt::Display for CollaboratorPermission {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CollaboratorPermission::Read => write!(f, "只读"),
+            CollaboratorPermission::Write => write!(f, "编辑"),
+            CollaboratorPermission::Admin => write!(f, "管理"),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct AddCollaboratorRequest {
+    email: String,
+    permission: CollaboratorPermission,
+}
+
+// WebSocket 消息类型
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum WsMessage {
+    /// 同步文档更新（CRDT 更新）
+    Sync { update: String },
+    /// 用户感知状态（光标位置等）
+    Awareness { state: AwarenessState },
+    /// 用户加入
+    UserJoined { user_id: String, nickname: String },
+    /// 用户离开
+    UserLeft { user_id: String },
+    /// 错误消息
+    Error { message: String },
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct AwarenessState {
+    user_id: String,
+    nickname: Option<String>,
+    cursor: Option<CursorPosition>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct CursorPosition {
+    line: usize,
+    column: usize,
+}
+
 // ===== LocalStorage 辅助函数 =====
 
 const API_BASE: &str = "http://127.0.0.1:3000";
+const WS_BASE: &str = "ws://127.0.0.1:3000";
 
 fn get_token() -> Option<String> {
     let window = web_sys::window()?;
@@ -169,8 +251,8 @@ async fn login_api(email: String, password: String) -> Result<AuthResponse, Stri
     }
 }
 
-async fn fetch_documents(token: &str) -> Result<Vec<Document>, String> {
-    let response = Request::get(&format!("{}/api/documents/my", API_BASE))
+async fn fetch_documents(token: &str) -> Result<Vec<DocumentListItem>, String> {
+    let response = Request::get(&format!("{}/api/documents/accessible", API_BASE))
         .header("Authorization", &format!("Bearer {}", token))
         .send()
         .await
@@ -293,6 +375,61 @@ async fn create_tag_api(token: &str, name: String, color: String) -> Result<TagW
         response.json().await.map_err(|e| format!("解析失败: {}", e))
     } else {
         Err(format!("创建标签失败: {}", response.status()))
+    }
+}
+
+// 协作者相关 API
+async fn fetch_collaborators(token: &str, doc_id: &str) -> Result<Vec<CollaboratorResponse>, String> {
+    let response = Request::get(&format!("{}/api/documents/{}/collaborators", API_BASE, doc_id))
+        .header("Authorization", &format!("Bearer {}", token))
+        .send()
+        .await
+        .map_err(|e| format!("网络错误: {}", e))?;
+
+    if response.ok() {
+        response.json().await.map_err(|e| format!("解析失败: {}", e))
+    } else {
+        Err(format!("获取协作者失败: {}", response.status()))
+    }
+}
+
+async fn add_collaborator_api(
+    token: &str,
+    doc_id: &str,
+    email: String,
+    permission: CollaboratorPermission,
+) -> Result<(), String> {
+    let response = Request::post(&format!("{}/api/documents/{}/collaborators", API_BASE, doc_id))
+        .header("Authorization", &format!("Bearer {}", token))
+        .json(&AddCollaboratorRequest { email, permission })
+        .map_err(|e| format!("请求失败: {}", e))?
+        .send()
+        .await
+        .map_err(|e| format!("网络错误: {}", e))?;
+
+    if response.ok() {
+        Ok(())
+    } else {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        Err(format!("添加协作者失败 ({}): {}", status, body))
+    }
+}
+
+async fn remove_collaborator_api(token: &str, doc_id: &str, user_id: &str) -> Result<(), String> {
+    let response = Request::delete(&format!(
+        "{}/api/documents/{}/collaborators/{}",
+        API_BASE, doc_id, user_id
+    ))
+    .header("Authorization", &format!("Bearer {}", token))
+    .send()
+    .await
+    .map_err(|e| format!("网络错误: {}", e))?;
+
+    if response.ok() {
+        Ok(())
+    } else {
+        Err(format!("删除协作者失败: {}", response.status()))
     }
 }
 
@@ -459,7 +596,7 @@ fn LoginPage() -> impl IntoView {
 
 #[component]
 fn DocumentsPage() -> impl IntoView {
-    let (documents, set_documents) = create_signal(Vec::<Document>::new());
+    let (documents, set_documents) = create_signal(Vec::<DocumentListItem>::new());
     let (folders, set_folders) = create_signal(Vec::<FolderTree>::new());
     let (tags, set_tags) = create_signal(Vec::<TagWithCount>::new());
     let (loading, set_loading) = create_signal(true);
@@ -727,8 +864,9 @@ fn DocumentsPage() -> impl IntoView {
                                     <For
                                         each=move || documents.get()
                                         key=|doc| doc.id.clone()
-                                        children=move |doc: Document| {
+                                        children=move |doc: DocumentListItem| {
                                             let doc_id = doc.id.clone();
+                                            let owner_name = doc.owner.nickname.clone();
                                             let nav_clone = nav.clone();
                                             view! {
                                                 <div class="document-card" on:click=move |_| {
@@ -740,9 +878,9 @@ fn DocumentsPage() -> impl IntoView {
                                                             <span class="badge badge-public">"公开"</span>
                                                         })}
                                                     </div>
-                                                    <p class="card-preview">{
-                                                        doc.content.chars().take(100).collect::<String>()
-                                                    }</p>
+                                                    <p class="card-preview" style="color: #666; font-size: 14px;">
+                                                        "作者: "{&owner_name}
+                                                    </p>
                                                     <p class="card-meta">
                                                         <span>"创建于: "{doc.created_at.chars().take(10).collect::<String>()}</span>
                                                         <span>"更新于: "{doc.updated_at.chars().take(10).collect::<String>()}</span>
@@ -773,17 +911,35 @@ fn EditorPage() -> impl IntoView {
     let (loading, set_loading) = create_signal(true);
     let (saving, set_saving) = create_signal(false);
     let (error, set_error) = create_signal(None::<String>);
+    let (syncing, set_syncing) = create_signal(false); // 同步状态
+    let (last_sync_time, set_last_sync_time) = create_signal(None::<f64>); // 上次同步时间
+
+    // 协作者管理
+    let (collaborators, set_collaborators) = create_signal(Vec::<CollaboratorResponse>::new());
+    let (show_collab_panel, set_show_collab_panel) = create_signal(false);
+    let (show_add_collab, set_show_add_collab) = create_signal(false);
+    let (new_collab_email, set_new_collab_email) = create_signal(String::new());
+    let (new_collab_permission, set_new_collab_permission) = create_signal(CollaboratorPermission::Write);
+
+    // WebSocket 和实时协作
+    let (ws, set_ws) = create_signal(None::<web_sys::WebSocket>);
+    let (online_users, set_online_users) = create_signal(Vec::<(String, String)>::new()); // (user_id, nickname)
+    let (ws_connected, set_ws_connected) = create_signal(false);
 
     let navigate = use_navigate();
     let navigate_clone = navigate.clone();
 
-    // 加载文档
+    // 加载文档和协作者
     create_effect(move |_| {
         let id = doc_id();
         if let Some(token) = get_token() {
             set_loading.set(true);
+
+            // 加载文档
+            let token_clone = token.clone();
+            let id_clone = id.clone();
             spawn_local(async move {
-                match fetch_document(&token, &id).await {
+                match fetch_document(&token_clone, &id_clone).await {
                     Ok(doc) => {
                         set_title.set(doc.title);
                         set_content.set(doc.content);
@@ -795,6 +951,99 @@ fn EditorPage() -> impl IntoView {
                     }
                 }
             });
+
+            // 加载协作者列表
+            let token_clone = token.clone();
+            let id_clone = id.clone();
+            spawn_local(async move {
+                match fetch_collaborators(&token_clone, &id_clone).await {
+                    Ok(collabs) => set_collaborators.set(collabs),
+                    Err(e) => leptos::logging::error!("加载协作者失败: {}", e),
+                }
+            });
+
+            // 建立 WebSocket 连接
+            let ws_url = format!("{}/ws/documents/{}?token={}", WS_BASE, id, token);
+            match web_sys::WebSocket::new(&ws_url) {
+                Ok(websocket) => {
+                    use wasm_bindgen::prelude::*;
+                    use wasm_bindgen::JsCast;
+
+                    // 连接打开
+                    let onopen_callback = Closure::wrap(Box::new(move |_| {
+                        set_ws_connected.set(true);
+                        leptos::logging::log!("WebSocket 已连接");
+                    }) as Box<dyn FnMut(JsValue)>);
+                    websocket.set_onopen(Some(onopen_callback.as_ref().unchecked_ref()));
+                    onopen_callback.forget();
+
+                    // 接收消息
+                    let onmessage_callback = Closure::wrap(Box::new(move |e: web_sys::MessageEvent| {
+                        if let Ok(txt) = e.data().dyn_into::<js_sys::JsString>() {
+                            let msg_str: String = txt.into();
+                            leptos::logging::log!("收到消息: {}", msg_str);
+
+                            if let Ok(msg) = serde_json::from_str::<WsMessage>(&msg_str) {
+                                match msg {
+                                    WsMessage::Sync { update } => {
+                                        leptos::logging::log!("收到同步消息: {} bytes", update.len());
+                                        // 简化版：update 就是完整的文档内容（不是 CRDT 二进制）
+                                        // 暂时解析为文本内容
+                                        if !update.is_empty() {
+                                            set_content.set(update);
+                                            set_syncing.set(false);
+                                            // 记录同步时间（使用简单的时间戳）
+                                            set_last_sync_time.set(Some(1.0));
+                                        }
+                                    }
+                                    WsMessage::UserJoined { user_id, nickname } => {
+                                        leptos::logging::log!("用户加入: {} ({})", nickname, user_id);
+                                        let mut users = online_users.get();
+                                        users.push((user_id.clone(), nickname.clone()));
+                                        set_online_users.set(users);
+                                    }
+                                    WsMessage::UserLeft { user_id } => {
+                                        leptos::logging::log!("用户离开: {}", user_id);
+                                        let users: Vec<_> = online_users.get()
+                                            .into_iter()
+                                            .filter(|(id, _)| id != &user_id)
+                                            .collect();
+                                        set_online_users.set(users);
+                                    }
+                                    WsMessage::Error { message } => {
+                                        set_error.set(Some(format!("WebSocket 错误: {}", message)));
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
+                    }) as Box<dyn FnMut(web_sys::MessageEvent)>);
+                    websocket.set_onmessage(Some(onmessage_callback.as_ref().unchecked_ref()));
+                    onmessage_callback.forget();
+
+                    // 连接关闭
+                    let onclose_callback = Closure::wrap(Box::new(move |_| {
+                        set_ws_connected.set(false);
+                        set_online_users.set(Vec::new());
+                        leptos::logging::log!("WebSocket 已断开");
+                    }) as Box<dyn FnMut(JsValue)>);
+                    websocket.set_onclose(Some(onclose_callback.as_ref().unchecked_ref()));
+                    onclose_callback.forget();
+
+                    // 错误处理
+                    let onerror_callback = Closure::wrap(Box::new(move |e: web_sys::ErrorEvent| {
+                        leptos::logging::error!("WebSocket 错误: {:?}", e);
+                        set_ws_connected.set(false);
+                    }) as Box<dyn FnMut(web_sys::ErrorEvent)>);
+                    websocket.set_onerror(Some(onerror_callback.as_ref().unchecked_ref()));
+                    onerror_callback.forget();
+
+                    set_ws.set(Some(websocket.clone()));
+                }
+                Err(e) => {
+                    leptos::logging::error!("创建 WebSocket 失败: {:?}", e);
+                }
+            }
         } else {
             navigate_clone("/", Default::default());
         }
@@ -823,41 +1072,283 @@ fn EditorPage() -> impl IntoView {
         }
     };
 
+    // 添加协作者
+    let add_collaborator = move |_| {
+        let id = doc_id();
+        if let Some(token) = get_token() {
+            let email = new_collab_email.get();
+            let permission = new_collab_permission.get();
+
+            spawn_local(async move {
+                match add_collaborator_api(&token, &id, email.clone(), permission).await {
+                    Ok(_) => {
+                        set_show_add_collab.set(false);
+                        set_new_collab_email.set(String::new());
+                        // 重新加载协作者列表
+                        if let Ok(collabs) = fetch_collaborators(&token, &id).await {
+                            set_collaborators.set(collabs);
+                        }
+                    }
+                    Err(e) => set_error.set(Some(e)),
+                }
+            });
+        }
+    };
+
+    // 删除协作者
+    let remove_collaborator = move |user_id: String| {
+        let id = doc_id();
+        if let Some(token) = get_token() {
+            spawn_local(async move {
+                match remove_collaborator_api(&token, &id, &user_id).await {
+                    Ok(_) => {
+                        // 从列表中移除
+                        let current_collabs = collaborators.get();
+                        let updated = current_collabs
+                            .into_iter()
+                            .filter(|c| c.user_id != user_id)
+                            .collect();
+                        set_collaborators.set(updated);
+                    }
+                    Err(e) => set_error.set(Some(e)),
+                }
+            });
+        }
+    };
+
+    // 通过 WebSocket 发送内容更新（防抖）
+    let sync_content = move |new_content: String| {
+        if let Some(websocket) = ws.get() {
+            set_syncing.set(true);
+
+            // 简化版：直接发送文本内容作为 update
+            let msg = WsMessage::Sync {
+                update: new_content,
+            };
+
+            if let Ok(msg_json) = serde_json::to_string(&msg) {
+                if websocket.send_with_str(&msg_json).is_ok() {
+                    leptos::logging::log!("内容已发送同步");
+                } else {
+                    leptos::logging::error!("发送同步消息失败");
+                    set_syncing.set(false);
+                }
+            }
+        }
+    };
+
+    // 监听内容变化，防抖后同步
+    let debounce_timer = create_signal(None::<i32>);
+    let on_content_change = move |ev| {
+        let new_content = event_target_value(&ev);
+        set_content.set(new_content.clone());
+
+        // 清除之前的定时器
+        if let Some(timer_id) = debounce_timer.0.get() {
+            web_sys::window()
+                .unwrap()
+                .clear_timeout_with_handle(timer_id);
+        }
+
+        // 设置新的防抖定时器（500ms）
+        let sync_fn = sync_content.clone();
+        let callback = Closure::wrap(Box::new(move || {
+            sync_fn(new_content.clone());
+        }) as Box<dyn Fn()>);
+
+        if let Some(window) = web_sys::window() {
+            let timer_id = window
+                .set_timeout_with_callback_and_timeout_and_arguments_0(
+                    callback.as_ref().unchecked_ref(),
+                    500,
+                )
+                .unwrap();
+            debounce_timer.1.set(Some(timer_id));
+            callback.forget();
+        }
+    };
+
     view! {
         <div class="editor-page">
             <div class="editor-toolbar">
                 <button class="btn-back" on:click=move |_| navigate("/documents", Default::default())>
                     "← 返回"
                 </button>
-                <button class="btn" on:click=save_doc disabled=move || saving.get()>
-                    {move || if saving.get() { "保存中..." } else { "💾 保存" }}
-                </button>
+                <div style="display: flex; gap: 8px;">
+                    <button
+                        class="btn btn-secondary"
+                        on:click=move |_| set_show_collab_panel.set(!show_collab_panel.get())
+                    >
+                        "👥 协作者 ("{move || collaborators.get().len()}")"
+                    </button>
+                    <button class="btn" on:click=save_doc disabled=move || saving.get()>
+                        {move || if saving.get() { "保存中..." } else { "💾 保存" }}
+                    </button>
+                </div>
             </div>
 
-            {move || if loading.get() {
-                view! { <div class="loading">"加载中..."</div> }.into_view()
-            } else {
-                view! {
-                    <div class="editor-content">
-                        <input
-                            class="title-input"
-                            type="text"
-                            placeholder="文档标题"
-                            prop:value=move || title.get()
-                            on:input=move |ev| set_title.set(event_target_value(&ev))
-                        />
-                        <textarea
-                            class="content-textarea"
-                            placeholder="开始输入..."
-                            prop:value=move || content.get()
-                            on:input=move |ev| set_content.set(event_target_value(&ev))
-                        />
-                        {move || error.get().map(|e| view! {
-                            <div class="message">{e}</div>
-                        })}
+            <div class="editor-layout">
+                {move || if loading.get() {
+                    view! { <div class="loading">"加载中..."</div> }.into_view()
+                } else {
+                    view! {
+                        <div class="editor-content">
+                            <input
+                                class="title-input"
+                                type="text"
+                                placeholder="文档标题"
+                                prop:value=move || title.get()
+                                on:input=move |ev| set_title.set(event_target_value(&ev))
+                            />
+                            <textarea
+                                class="content-textarea"
+                                placeholder="开始输入..."
+                                prop:value=move || content.get()
+                                on:input=on_content_change
+                            />
+
+                            // 同步状态显示
+                            <div class="sync-status" style="position: fixed; bottom: 20px; right: 20px; padding: 8px 16px; background: #f0f0f0; border-radius: 4px; font-size: 14px;">
+                                {move || if syncing.get() {
+                                    view! { <span style="color: #3b82f6;">"⟳ 正在同步..."</span> }.into_view()
+                                } else if let Some(_time) = last_sync_time.get() {
+                                    view! { <span style="color: #10b981;">"✓ 已同步"</span> }.into_view()
+                                } else {
+                                    view! { <span style="color: #999;">"等待编辑..."</span> }.into_view()
+                                }}
+                            </div>
+
+                            {move || error.get().map(|e| view! {
+                                <div class="message">{e}</div>
+                            })}
+                        </div>
+                    }.into_view()
+                }}
+
+                // 协作者侧边栏
+                {move || show_collab_panel.get().then(|| view! {
+                    <div class="collaborators-panel">
+                        <div class="panel-header">
+                            <h3>"协作者"</h3>
+                            <button
+                                class="btn-close"
+                                on:click=move |_| set_show_collab_panel.set(false)
+                            >
+                                "×"
+                            </button>
+                        </div>
+
+                        <div class="panel-content">
+                            // 在线用户显示
+                            <div class="online-users" style="margin-bottom: 16px; padding: 12px; background: #f5f5f5; border-radius: 4px;">
+                                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                                    <strong>"在线用户"</strong>
+                                    <span style=move || if ws_connected.get() {
+                                        "color: #10b981;"
+                                    } else {
+                                        "color: #ef4444;"
+                                    }>
+                                        {move || if ws_connected.get() { "● 已连接" } else { "○ 未连接" }}
+                                    </span>
+                                </div>
+                                <div>
+                                    {move || if online_users.get().is_empty() {
+                                        view! { <div style="color: #999; font-size: 14px;">"暂无在线用户"</div> }.into_view()
+                                    } else {
+                                        view! {
+                                            <For
+                                                each=move || online_users.get()
+                                                key=|(id, _)| id.clone()
+                                                children=|(_, nickname): (String, String)| {
+                                                    view! {
+                                                        <div style="font-size: 14px; padding: 4px 0; color: #10b981;">
+                                                            "● "{nickname}
+                                                        </div>
+                                                    }
+                                                }
+                                            />
+                                        }.into_view()
+                                    }}
+                                </div>
+                            </div>
+
+                            <button
+                                class="btn btn-primary"
+                                style="width: 100%; margin-bottom: 16px;"
+                                on:click=move |_| set_show_add_collab.set(!show_add_collab.get())
+                            >
+                                "+ 添加协作者"
+                            </button>
+
+                            {move || show_add_collab.get().then(|| view! {
+                                <div class="add-collab-form">
+                                    <input
+                                        type="text"
+                                        placeholder="用户邮箱"
+                                        prop:value=move || new_collab_email.get()
+                                        on:input=move |ev| set_new_collab_email.set(event_target_value(&ev))
+                                        class="input-sm"
+                                    />
+                                    <select
+                                        class="select-sm"
+                                        on:change=move |ev| {
+                                            let value = event_target_value(&ev);
+                                            let perm = match value.as_str() {
+                                                "read" => CollaboratorPermission::Read,
+                                                "write" => CollaboratorPermission::Write,
+                                                "admin" => CollaboratorPermission::Admin,
+                                                _ => CollaboratorPermission::Write,
+                                            };
+                                            set_new_collab_permission.set(perm);
+                                        }
+                                    >
+                                        <option value="read">"只读"</option>
+                                        <option value="write" selected>"编辑"</option>
+                                        <option value="admin">"管理"</option>
+                                    </select>
+                                    <div style="display: flex; gap: 8px; margin-top: 8px;">
+                                        <button class="btn-sm" on:click=add_collaborator>"添加"</button>
+                                        <button
+                                            class="btn-sm btn-cancel"
+                                            on:click=move |_| set_show_add_collab.set(false)
+                                        >
+                                            "取消"
+                                        </button>
+                                    </div>
+                                </div>
+                            })}
+
+                            <div class="collaborators-list">
+                                <For
+                                    each=move || collaborators.get()
+                                    key=|collab| collab.user_id.clone()
+                                    children=move |collab: CollaboratorResponse| {
+                                        let user_id = collab.user_id.clone();
+                                        view! {
+                                            <div class="collaborator-item">
+                                                <div class="collab-info">
+                                                    <div class="collab-name">{&collab.nickname}</div>
+                                                    <div class="collab-email">{&collab.email}</div>
+                                                </div>
+                                                <div class="collab-actions">
+                                                    <span class="collab-permission">{format!("{}", collab.permission)}</span>
+                                                    <button
+                                                        class="btn-icon btn-danger"
+                                                        on:click=move |_| remove_collaborator(user_id.clone())
+                                                        title="移除"
+                                                    >
+                                                        "×"
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        }
+                                    }
+                                />
+                            </div>
+                        </div>
                     </div>
-                }.into_view()
-            }}
+                })}
+            </div>
         </div>
     }
 }

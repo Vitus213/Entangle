@@ -8,10 +8,15 @@ use uuid::Uuid;
 /// 广播消息类型
 #[derive(Debug, Clone)]
 pub enum BroadcastMessage {
-    /// 文档更新
+    /// 文档更新（CRDT 二进制）
     DocUpdate {
         from_user: Uuid,
         update: Vec<u8>,
+    },
+    /// 文本更新（简化模式）
+    TextUpdate {
+        from_user: Uuid,
+        content: String,
     },
     /// 用户感知状态更新
     AwarenessUpdate {
@@ -149,9 +154,28 @@ impl DocumentRoom {
         self.document.apply_update(update)
     }
 
+    /// 设置文本内容（简化模式）- 直接替换文档内容并广播
+    pub fn set_text_content(&self, content: &str, from_user: Uuid) -> Result<(), crate::document::CollabError> {
+        // 设置文本内容
+        self.document.set_text("content", content)?;
+
+        // 广播文本更新给其他用户（简化模式）
+        let _ = self.broadcast_tx.send(BroadcastMessage::TextUpdate {
+            from_user,
+            content: content.to_string(),
+        });
+
+        Ok(())
+    }
+
     /// 获取文档状态
     pub fn get_state(&self) -> Vec<u8> {
         self.document.get_full_state()
+    }
+
+    /// 获取文本内容
+    pub fn get_text_content(&self) -> String {
+        self.document.get_default_text()
     }
 
     /// 更新用户感知状态并广播

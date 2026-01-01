@@ -98,9 +98,26 @@ impl std::fmt::Display for CollaboratorPermission {
     }
 }
 
+/// 协作者响应（包含用户信息）
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct CollaboratorResponse {
+    pub user_id: Uuid,
+    pub nickname: String,
+    pub email: String,
+    pub permission: CollaboratorPermission,
+    pub created_at: DateTime<Utc>,
+}
+
 /// 添加协作者请求
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AddCollaborator {
     pub user_id: Uuid,
+    pub permission: CollaboratorPermission,
+}
+
+/// 通过邮箱添加协作者请求
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AddCollaboratorByEmail {
+    pub email: String,
     pub permission: CollaboratorPermission,
 }

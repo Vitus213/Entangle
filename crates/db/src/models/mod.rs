@@ -11,7 +11,7 @@ pub use permission::Permission;
 pub use document::{
     Document, CreateDocument, UpdateDocument, DocumentResponse,
     DocumentListItem, DocumentOwner, DocumentCollaborator,
-    CollaboratorPermission, AddCollaborator,
+    CollaboratorPermission, AddCollaborator, AddCollaboratorByEmail, CollaboratorResponse,
 };
 pub use folder::{
     Folder, CreateFolder, UpdateFolder, FolderResponse,

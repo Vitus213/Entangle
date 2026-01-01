@@ -59,8 +59,10 @@ async fn main() -> anyhow::Result<()> {
     let app = Router::new()
         .route("/", get(|| async { "Entangle API Server" }))
         .route("/health", get(|| async { "OK" }))
-        // WebSocket route
+        // WebSocket route (需要 pool extension 用于权限检查)
         .route("/ws/documents/:id", get(ws::handlers::websocket_handler))
+        .layer(axum::Extension(pool.clone()))  // Pool extension for WebSocket
+        .layer(axum::Extension(ws_hub.clone())) // WsHub extension
         // Public routes (no auth required)
         .nest("/api/auth", routes::user_public_routes())
         // Protected routes (auth required)
@@ -69,7 +71,6 @@ async fn main() -> anyhow::Result<()> {
         .nest("/api", routes::folder_routes())
         .nest("/api", routes::tag_routes())
         .layer(cors)
-        .layer(axum::Extension(ws_hub.clone()))
         .with_state(pool);
 
     // Start server
