@@ -25,6 +25,14 @@
 | [标签系统](TAG_SYSTEM.md) | 标签管理、文档筛选 |
 | [前端开发](FRONTEND.md) | Leptos/WASM 前端开发 |
 
+### 📚 代码讲解（新增 - 用于答辩）
+
+| 文档 | 说明 | 用途 |
+|------|------|------|
+| [**完整技术架构**](ARCHITECTURE.md) | 系统架构、技术栈、核心流程、常见问题 | 全面理解项目，准备答辩 |
+| [**快速参考指南**](QUICK_REFERENCE.md) | 速查手册、演示流程、关键代码位置 | 演示时快速查阅 |
+| [**核心代码导读**](CODE_WALKTHROUGH.md) | 带详细注释的核心代码讲解 | 代码走查，理解实现 |
+
 ### 项目管理
 
 | 文档 | 说明 |
@@ -51,6 +59,11 @@ docs/
 │   ├── FOLDER_SYSTEM.md   # 文件夹系统
 │   ├── TAG_SYSTEM.md      # 标签系统
 │   └── FRONTEND.md        # 前端开发文档
+│
+├── 📚 代码讲解（用于答辩）
+│   ├── ARCHITECTURE.md     # 完整技术架构文档（800 行）
+│   ├── QUICK_REFERENCE.md  # 快速参考指南（400 行）
+│   └── CODE_WALKTHROUGH.md # 核心代码导读（600 行）
 │
 └── 项目管理
     ├── PROGRESS.md        # 开发进度追踪
@@ -176,6 +189,36 @@ open http://localhost:8080
 | 测试收尾 | ⏳ 待开始 | 0% |
 
 **总体进度: 75%**
+
+---
+
+## 🎯 答辩准备建议
+
+### 快速通道（1-2 小时准备）
+
+1. **快速理解**（30 分钟）
+   - 阅读 [QUICK_REFERENCE.md](QUICK_REFERENCE.md)
+   - 记住核心技术栈、数据流程
+
+2. **深入学习**（40 分钟）
+   - 阅读 [ARCHITECTURE.md](ARCHITECTURE.md) 的：
+     - 项目概述
+     - 整体架构
+     - 实时协作系统详解
+     - 回答老师可能的问题
+
+3. **代码准备**（20 分钟）
+   - 浏览 [CODE_WALKTHROUGH.md](CODE_WALKTHROUGH.md)
+   - 理解 WebSocket 主循环
+
+### 关键问题准备
+
+| 问题 | 查看 |
+|------|------|
+| 为什么用 Rust？ | [ARCHITECTURE.md](ARCHITECTURE.md) - 技术栈详解 |
+| CRDT 是什么？ | [ARCHITECTURE.md](ARCHITECTURE.md) - Q2 |
+| WebSocket 如何工作？ | [CODE_WALKTHROUGH.md](CODE_WALKTHROUGH.md) |
+| 如何保证并发安全？ | [ARCHITECTURE.md](ARCHITECTURE.md) - Q5 |
 
 ---
 
