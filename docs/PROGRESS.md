@@ -121,21 +121,29 @@
 
 ## 🔄 进行中阶段
 
-### 阶段 3: 文档管理扩展 (0%)
+### 阶段 3: 文档管理扩展 (50%)
 
-**预计开始**: 2024-12-31
-**预计完成**: TBD
+**开始时间**: 2025-12-31
+**预计完成**: 2026-01-02
+
+**已完成功能**:
+- ✅ 文件夹系统 (CRUD + 树结构 + 文档移动)
+- ✅ 标签系统 (CRUD + 文档关联 + 筛选)
 
 **待实现功能**:
-- ⏳ 文件夹系统 (CRUD + 树结构)
-- ⏳ 标签系统 (CRUD + 文档关联)
 - ⏳ 搜索功能 (标题/全文/筛选)
 - ⏳ 文档复制
 
 **设计文档**:
-- 待创建: `docs/FOLDER_DESIGN.md`
-- 待创建: `docs/TAG_DESIGN.md`
+- ✅ `docs/FOLDER_DESIGN.md` - 文件夹系统设计
+- ✅ `docs/FOLDER_USAGE.md` - 文件夹使用文档
+- ✅ `docs/TAG_DESIGN.md` - 标签系统设计
+- ✅ `docs/TAG_USAGE.md` - 标签使用文档
 - 待创建: `docs/SEARCH_DESIGN.md`
+
+**测试脚本**:
+- ✅ `scripts/test_folders.sh` - 文件夹功能测试
+- ✅ `scripts/test_tags.sh` - 标签功能测试
 
 ---
 

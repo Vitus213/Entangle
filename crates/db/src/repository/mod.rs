@@ -3,9 +3,11 @@ pub mod role;
 pub mod permission;
 pub mod document;
 pub mod folder;
+pub mod tag;
 
 pub use user::UserRepository;
 pub use role::RoleRepository;
 pub use permission::PermissionRepository;
 pub use document::DocumentRepository;
 pub use folder::FolderRepository;
+pub use tag::TagRepository;

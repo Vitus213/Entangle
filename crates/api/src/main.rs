@@ -66,6 +66,7 @@ async fn main() -> anyhow::Result<()> {
         .nest("/api", routes::user_protected_routes())
         .nest("/api", routes::document_routes())
         .nest("/api", routes::folder_routes())
+        .nest("/api", routes::tag_routes())
         .layer(cors)
         .layer(axum::Extension(ws_hub))
         .with_state(pool);

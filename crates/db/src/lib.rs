@@ -5,5 +5,6 @@ pub mod repository;
 
 pub use pool::create_pool;
 pub use repository::{
-    DocumentRepository, FolderRepository, PermissionRepository, RoleRepository, UserRepository,
+    DocumentRepository, FolderRepository, PermissionRepository, RoleRepository, TagRepository,
+    UserRepository,
 };
