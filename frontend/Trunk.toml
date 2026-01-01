@@ -1,0 +1,19 @@
+[build]
+# 指定 WASM target
+target = "wasm32-unknown-unknown"
+
+[watch]
+# 监听文件变化
+ignore = ["target/"]
+
+[serve]
+# 开发服务器配置
+address = "127.0.0.1"
+port = 8080
+open = true
+
+[[hooks]]
+# 在构建时使用特殊的 RUSTFLAGS
+stage = "build"
+command = "sh"
+command_arguments = ["-c", "export RUSTFLAGS='-C target-feature=+atomics,+bulk-memory,+mutable-globals'"]

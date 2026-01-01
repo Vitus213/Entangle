@@ -78,7 +78,7 @@ openssl rand -hex 32
 
 ### 开发工作流
 
-#### 使用 Just 命令（推荐）
+#### 后端开发 (使用 Just 命令)
 
 ```bash
 # 查看所有可用命令
@@ -101,6 +101,34 @@ just dev
 
 # 代码检查
 just check
+```
+
+#### 前端开发 (Leptos + WASM)
+
+```bash
+# 进入前端目录
+cd frontend
+
+# 启动开发服务器（热重载，推荐）
+trunk serve
+
+# 自定义端口
+trunk serve --port 3001
+
+# 生产构建
+trunk build --release
+```
+
+#### 全栈开发（推荐）
+
+```bash
+# Terminal 1: 启动后端（端口 3000）
+just dev
+
+# Terminal 2: 启动前端（端口 8080）
+cd frontend && trunk serve
+
+# 然后访问: http://localhost:8080
 ```
 
 #### 手动命令
@@ -231,18 +259,46 @@ cargo run
 
 ## 技术栈
 
-- **后端**: Rust + Axum + SeaORM
+### 后端
+- **框架**: Rust + Axum
 - **数据库**: openGauss (PostgreSQL 兼容)
+- **ORM**: SeaORM
 - **缓存**: Redis
 - **实时协作**: Yrs (CRDT)
 - **认证**: JWT + Argon2
-- **构建工具**: Nix Flakes + Just
+
+### 前端
+- **框架**: Leptos 0.6 (Rust 全栈)
+- **运行时**: WebAssembly (WASM)
+- **路由**: Leptos Router
+- **HTTP 客户端**: gloo-net
+- **构建工具**: Trunk
+
+### 开发工具
+- **包管理**: Nix Flakes
+- **任务运行**: Just
+- **容器化**: Docker + Docker Compose
 
 ## 文档
 
-- [项目计划](docs/PROJECT_PLAN.md)
-- [API 文档](docs/API.md)（待完成）
-- [部署指南](docs/DEPLOYMENT.md)（待完成）
+### 项目规划
+- [项目计划](docs/PROJECT_PLAN.md) - 完整的系统设计和开发计划
+- [开发进度](docs/PROGRESS.md) - 当前开发状态
+
+### 后端文档
+- [认证系统](docs/AUTH_README.md) - RBAC 权限管理
+- [文件夹设计](docs/FOLDER_DESIGN.md) - 文件夹系统架构
+- [标签设计](docs/TAG_DESIGN.md) - 标签系统架构
+- [测试文档](docs/TESTING.md) - 测试指南
+
+### 前端文档
+- [前端开发指南](docs/FRONTEND_GUIDE.md) - Leptos 开发详细指南
+- [前端环境配置](docs/FRONTEND_SETUP.md) - Nix 构建环境说明
+
+### 使用指南
+- [快速开始](docs/QUICK_START.md) - 快速上手指南
+- [文件夹使用](docs/FOLDER_USAGE.md) - 文件夹功能说明
+- [标签使用](docs/TAG_USAGE.md) - 标签功能说明
 
 ## 许可证
 

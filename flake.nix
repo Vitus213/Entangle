@@ -27,6 +27,12 @@
           "rust-analyzer"
         ];
 
+        # Add wasm32 target for frontend builds
+        rustToolchainWithWasm = fenix.packages.${system}.combine [
+          rustToolchain
+          fenix.packages.${system}.targets.wasm32-unknown-unknown.latest.rust-std
+        ];
+
         # Environment variables
         env = {
           # Application
@@ -65,14 +71,18 @@
           # WebSocket
           WS_HEARTBEAT_INTERVAL = "30";
           WS_CLIENT_TIMEOUT = "60";
+
+          # Frontend
+          TRUNK_SERVE_PORT = "8080";
+          TRUNK_SERVE_ADDRESS = "127.0.0.1";
         };
 
       in
       {
         devShells.default = pkgs.mkShell {
           buildInputs = with pkgs; [
-            # Rust toolchain
-            rustToolchain
+            # Rust toolchain with wasm32 target
+            rustToolchainWithWasm
 
             # Build dependencies
             pkg-config
@@ -93,7 +103,12 @@
             just
             watchexec
 
-            # Optional: Node.js for frontend
+            # Frontend build tools
+            trunk                    # Leptos/WASM bundler
+            wasm-bindgen-cli         # WASM-JS bindings
+            binaryen                 # wasm-opt for optimization
+
+            # Optional: Node.js for other frontend needs
             nodejs_20
             nodePackages.pnpm
           ];
@@ -103,6 +118,10 @@
             echo "=================================="
             echo "Rust: $(rustc --version)"
             echo "Cargo: $(cargo --version)"
+            echo "Trunk: $(trunk --version)"
+            echo ""
+            echo "📦 WASM Target: wasm32-unknown-unknown"
+            rustup target list --installed | grep wasm32 > /dev/null && echo "   ✅ Already installed" || echo "   ✅ Available via Nix"
             echo ""
 
             # Set environment variables
@@ -138,11 +157,24 @@
 
             echo ""
             echo "📦 Available commands:"
-            echo "  just dev               - Start complete dev environment"
-            echo "  just db-up             - Start databases only"
-            echo "  cargo run              - Run the API server"
-            echo "  cargo test             - Run tests"
-            echo "  cargo clippy           - Run linter"
+            echo ""
+            echo "  Backend:"
+            echo "    just dev               - Start complete dev environment"
+            echo "    just db-up             - Start databases only"
+            echo "    cargo run              - Run the API server"
+            echo "    cargo test             - Run tests"
+            echo "    cargo clippy           - Run linter"
+            echo ""
+            echo "  Frontend (Leptos + WASM):"
+            echo "    cd frontend && trunk serve           - Dev server with hot reload (localhost:8080)"
+            echo "    cd frontend && trunk build           - Development build"
+            echo "    cd frontend && trunk build --release - Production build (optimized)"
+            echo "    ./scripts/build_and_serve_frontend.sh - Build and serve frontend"
+            echo ""
+            echo "  Full Stack:"
+            echo "    Terminal 1: just dev"
+            echo "    Terminal 2: cd frontend && trunk serve"
+            echo "    Then open: http://localhost:8080"
             echo ""
           '';
 
@@ -150,20 +182,21 @@
           LD_LIBRARY_PATH = "${pkgs.lib.makeLibraryPath [ pkgs.openssl ]}";
         };
 
-        # Package definition (optional, for building the project)
-        packages.default = pkgs.rustPlatform.buildRustPackage {
-          pname = "entangle";
-          version = "0.1.0";
-          src = ./.;
-          cargoLock = {
-            lockFile = ./Cargo.lock;
-          };
-
-          buildInputs = with pkgs; [
-            openssl
-            pkg-config
-          ];
-        };
+        # Package definition (commented out - use devShell for development)
+        # Uncomment when ready to build production packages
+        # packages.default = pkgs.rustPlatform.buildRustPackage {
+        #   pname = "entangle";
+        #   version = "0.1.0";
+        #   src = ./.;
+        #   cargoLock = {
+        #     lockFile = ./Cargo.lock;
+        #   };
+        #
+        #   buildInputs = with pkgs; [
+        #     openssl
+        #     pkg-config
+        #   ];
+        # };
       }
     );
 }
