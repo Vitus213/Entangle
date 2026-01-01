@@ -106,6 +106,11 @@ impl CollabDocument {
         Ok(text.get_string(&txn))
     }
 
+    /// 获取默认文本内容（使用 "content" 作为名称）
+    pub fn get_default_text(&self) -> String {
+        self.get_text("content").unwrap_or_default()
+    }
+
     /// 设置文本内容
     pub fn set_text(&self, text_name: &str, content: &str) -> Result<(), CollabError> {
         let mut txn = self.doc.transact_mut();

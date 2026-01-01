@@ -39,11 +39,12 @@ async fn main() -> anyhow::Result<()> {
     let pool = create_pool(&database_url).await?;
     tracing::info!("Database connected successfully");
 
-    // Create WebSocket hub
-    let ws_hub = WsHub::new();
+    // Create WebSocket hub with database pool for persistence
+    let ws_hub = WsHub::with_pool(pool.clone());
+    tracing::info!("WebSocket hub initialized with auto-save enabled");
 
     // Create application state
-    let state = AppState {
+    let _state = AppState {
         pool: pool.clone(),
         ws_hub: ws_hub.clone(),
     };
@@ -68,7 +69,7 @@ async fn main() -> anyhow::Result<()> {
         .nest("/api", routes::folder_routes())
         .nest("/api", routes::tag_routes())
         .layer(cors)
-        .layer(axum::Extension(ws_hub))
+        .layer(axum::Extension(ws_hub.clone()))
         .with_state(pool);
 
     // Start server
@@ -76,6 +77,17 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("Listening on {}", addr);
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
+
+    // Handle graceful shutdown
+    let ws_hub_shutdown = ws_hub.clone();
+    tokio::spawn(async move {
+        tokio::signal::ctrl_c().await.ok();
+        tracing::info!("Shutdown signal received, saving all documents...");
+        ws_hub_shutdown.save_all_dirty().await;
+        tracing::info!("All documents saved");
+        std::process::exit(0);
+    });
+
     axum::serve(listener, app).await?;
 
     Ok(())

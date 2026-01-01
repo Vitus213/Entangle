@@ -8,4 +8,4 @@ pub use awareness::{
     generate_user_color, AwarenessManager, AwarenessState, CursorPosition, Selection, UserInfo,
 };
 pub use document::{CollabDocument, CollabError, DocumentMetadata};
-pub use sync::{ConnectionInfo, DocumentRoom, RoomManager};
+pub use sync::{BroadcastMessage, ConnectionInfo, DocumentRoom, RoomManager};

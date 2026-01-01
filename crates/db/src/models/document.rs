@@ -13,6 +13,9 @@ pub struct Document {
     pub is_public: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    #[serde(skip_serializing)]
+    #[sqlx(default)]
+    pub crdt_state: Option<Vec<u8>>,
 }
 
 /// 创建文档请求

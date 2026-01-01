@@ -40,6 +40,52 @@ impl DocumentRepository {
             .await
     }
 
+    /// 获取文档的 CRDT 状态
+    pub async fn get_crdt_state(pool: &PgPool, doc_id: Uuid) -> Result<Option<Vec<u8>>, sqlx::Error> {
+        let result = sqlx::query_scalar::<_, Option<Vec<u8>>>(
+            "SELECT crdt_state FROM documents WHERE id = $1"
+        )
+        .bind(doc_id)
+        .fetch_optional(pool)
+        .await?;
+
+        Ok(result.flatten())
+    }
+
+    /// 保存文档的 CRDT 状态
+    pub async fn save_crdt_state(
+        pool: &PgPool,
+        doc_id: Uuid,
+        crdt_state: &[u8],
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "UPDATE documents SET crdt_state = $1, updated_at = NOW() WHERE id = $2"
+        )
+        .bind(crdt_state)
+        .bind(doc_id)
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
+    /// 同时保存 CRDT 状态和文本内容（用于同步）
+    pub async fn save_crdt_state_with_content(
+        pool: &PgPool,
+        doc_id: Uuid,
+        crdt_state: &[u8],
+        content: &str,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "UPDATE documents SET crdt_state = $1, content = $2, updated_at = NOW() WHERE id = $3"
+        )
+        .bind(crdt_state)
+        .bind(content)
+        .bind(doc_id)
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
     /// 获取文档详情（包含作者信息）
     pub async fn get_detail(
         pool: &PgPool,

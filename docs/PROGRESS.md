@@ -4,8 +4,8 @@
 
 ## 📊 总体进度
 
-- **已完成**: 5/8 阶段 (62.5%)
-- **进行中**: 1/8 阶段
+- **已完成**: 6/8 阶段 (75%)
+- **进行中**: 0/8 阶段
 - **待开始**: 2/8 阶段
 
 ---
@@ -88,37 +88,6 @@
 
 ---
 
-### 阶段 4: 实时协作 (CRDT) (70%)
-
-**完成时间**: 2024-12-31 (部分完成)
-
-**已完成**:
-- ✅ CRDT 文档管理 (Yrs)
-- ✅ 用户感知系统
-- ✅ 文档房间管理
-- ✅ WebSocket 基础端点
-- ✅ API 集成
-
-**待完成**:
-- ⏳ 更新广播机制
-- ⏳ 心跳检测
-- ⏳ 断线重连
-- ⏳ 状态持久化到数据库
-
-**技术栈**:
-- `entangle-collab` crate
-- Yrs (CRDT)
-- WebSocket (Axum)
-
-**API 端点**:
-- `ws://host/ws/documents/:id` - WebSocket 连接
-
-**测试**:
-- ✅ Collab crate 单元测试 (7/7)
-- ✅ `scripts/test_websocket.sh` - WebSocket 端点测试
-
----
-
 ### 阶段 3: 文档管理扩展 (100%)
 
 **完成时间**: 2026-01-01
@@ -156,6 +125,50 @@
 **测试脚本**:
 - ✅ `scripts/test_folders.sh` - 文件夹功能测试
 - ✅ `scripts/test_tags.sh` - 标签功能测试
+
+---
+
+### 阶段 4: 实时协作 (CRDT) (100%)
+
+**完成时间**: 2026-01-01
+
+**核心成果**:
+- ✅ CRDT 文档管理 (Yrs)
+- ✅ 用户感知系统 (光标、选区、在线状态)
+- ✅ 文档房间管理
+- ✅ WebSocket 端点
+- ✅ **消息广播机制** (tokio::sync::broadcast)
+- ✅ **心跳检测** (30秒 Ping/Pong)
+- ✅ **断线处理** (自动清理用户状态)
+- ✅ **CRDT 状态持久化** (自动保存到数据库)
+- ✅ **优雅关闭** (保存所有脏文档)
+
+**技术栈**:
+- `entangle-collab` crate
+- Yrs 0.18 (CRDT)
+- WebSocket (Axum)
+- tokio::sync::broadcast (消息广播)
+
+**数据库更新**:
+- 新增 `crdt_state` 字段 (BYTEA 类型)
+- 自动同步 CRDT 状态和文本内容
+
+**API 端点**:
+- `ws://host/ws/documents/:id` - WebSocket 连接
+
+**消息类型**:
+```json
+{"type": "sync", "update": "<hex_encoded_update>"}
+{"type": "awareness", "state": {...}}
+{"type": "user_joined", "user_id": "...", "nickname": "..."}
+{"type": "user_left", "user_id": "..."}
+{"type": "error", "message": "..."}
+```
+
+**测试**:
+- ✅ Collab crate 单元测试 (8/8 通过)
+- ✅ 广播机制测试
+- ✅ `scripts/test_websocket.sh` - WebSocket 端点测试
 
 ---
 
@@ -204,39 +217,6 @@
 
 ---
 
-## 🔄 进行中阶段
-
-### 阶段 4: 实时协作 (CRDT) (70%)
-
-**当前进展**: 基础功能完成，需完善广播和心跳
-
-**已完成**:
-- ✅ CRDT 文档管理 (Yrs)
-- ✅ 用户感知系统
-- ✅ 文档房间管理
-- ✅ WebSocket 基础端点
-- ✅ API 集成
-
-**待完成**:
-- ⏳ 更新广播机制
-- ⏳ 心跳检测
-- ⏳ 断线重连
-- ⏳ 状态持久化到数据库
-
-**技术栈**:
-- `entangle-collab` crate
-- Yrs (CRDT)
-- WebSocket (Axum)
-
-**API 端点**:
-- `ws://host/ws/documents/:id` - WebSocket 连接
-
-**测试**:
-- ✅ Collab crate 单元测试 (7/7)
-- ✅ `scripts/test_websocket.sh` - WebSocket 端点测试
-
----
-
 ## ⏳ 待开始阶段
 
 ### 阶段 5: 评论与通知 (0%)
@@ -270,9 +250,9 @@
 ## 📈 技术债务
 
 ### 高优先级
-- [ ] 实现 WebSocket 消息广播机制
-- [ ] 添加心跳检测避免连接超时
-- [ ] CRDT 状态持久化到数据库
+- [x] ~~实现 WebSocket 消息广播机制~~
+- [x] ~~添加心跳检测避免连接超时~~
+- [x] ~~CRDT 状态持久化到数据库~~
 
 ### 中优先级
 - [ ] 前端集成 WebSocket 实时协作
@@ -290,13 +270,12 @@
 ## 🎯 下一步行动
 
 ### 立即执行
-1. 完善 WebSocket 广播机制
-2. 添加心跳检测和断线重连
-3. 实现 CRDT 状态持久化
+1. 前端集成 WebSocket 实时协作
+2. 开始评论系统设计
 
 ### 本周目标
-- 完成阶段 4: 实时协作系统 (100%)
-- 开始评论与通知系统设计
+- 前端编辑器集成 CRDT 实时同步
+- 实现多用户光标显示
 
 ### 本月目标
 - 完成阶段 5: 评论与通知系统
@@ -306,6 +285,11 @@
 
 ## 📝 最新提交
 
+- `feat: 完成实时协作系统` (2026-01-01)
+  - 实现消息广播机制
+  - 添加心跳检测
+  - CRDT 状态持久化
+  - 优雅关闭处理
 - `feat: 实现文档搜索和复制功能` (2026-01-01)
 - `feat: 完成 Leptos 前端基础功能` (2026-01-01)
 - `feat: 配置前端构建环境` (2026-01-01)
@@ -316,16 +300,20 @@
 
 ## 📚 相关文档
 
+### 文档索引
+- [文档中心](README.md) - 完整文档导航
+
+### 入门指南
+- [开发者指南](DEVELOPMENT.md) - 编译、调试、部署
+- [快速开始](QUICK_START.md) - 项目概述
+- [测试指南](TESTING.md) - 测试用例
+
+### 功能模块
+- [认证系统](AUTH_README.md) - JWT/RBAC 认证
+- [文件夹系统](FOLDER_SYSTEM.md) - 层级文件夹管理
+- [标签系统](TAG_SYSTEM.md) - 标签管理和筛选
+- [前端开发](FRONTEND.md) - Leptos/WASM 前端
+
 ### 项目规划
-- [项目计划](PROJECT_PLAN.md)
-- [快速开始](QUICK_START.md)
-
-### 功能文档
-- [认证系统](AUTH_README.md)
-- [文件夹系统](FOLDER_DESIGN.md)
-- [标签系统](TAG_DESIGN.md)
-- [测试文档](TESTING.md)
-
-### 前端文档
-- [前端开发指南](FRONTEND_GUIDE.md)
-- [前端环境配置](FRONTEND_SETUP.md)
+- [项目计划](PROJECT_PLAN.md) - 总体规划
+- [课程报告](COURSE_REPORT.md) - 大作业报告

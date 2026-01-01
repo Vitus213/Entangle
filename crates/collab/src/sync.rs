@@ -2,10 +2,33 @@ use crate::awareness::{AwarenessManager, AwarenessState};
 use crate::document::CollabDocument;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
+use tokio::sync::broadcast;
 use uuid::Uuid;
 
+/// 广播消息类型
+#[derive(Debug, Clone)]
+pub enum BroadcastMessage {
+    /// 文档更新
+    DocUpdate {
+        from_user: Uuid,
+        update: Vec<u8>,
+    },
+    /// 用户感知状态更新
+    AwarenessUpdate {
+        user_id: Uuid,
+        state: AwarenessState,
+    },
+    /// 用户加入
+    UserJoined {
+        user_id: Uuid,
+    },
+    /// 用户离开
+    UserLeft {
+        user_id: Uuid,
+    },
+}
+
 /// 文档房间 - 管理单个文档的所有协作会话
-#[derive(Clone)]
 pub struct DocumentRoom {
     /// 文档 ID
     doc_id: Uuid,
@@ -15,6 +38,8 @@ pub struct DocumentRoom {
     awareness: AwarenessManager,
     /// 在线用户连接
     connections: Arc<RwLock<HashMap<Uuid, ConnectionInfo>>>,
+    /// 广播通道发送端
+    broadcast_tx: broadcast::Sender<BroadcastMessage>,
 }
 
 /// 连接信息
@@ -27,21 +52,25 @@ pub struct ConnectionInfo {
 impl DocumentRoom {
     /// 创建新的文档房间
     pub fn new(doc_id: Uuid) -> Self {
+        let (broadcast_tx, _) = broadcast::channel(256);
         Self {
             doc_id,
             document: CollabDocument::new(doc_id),
             awareness: AwarenessManager::new(doc_id),
             connections: Arc::new(RwLock::new(HashMap::new())),
+            broadcast_tx,
         }
     }
 
     /// 从已有状态创建房间
     pub fn from_state(doc_id: Uuid, state: &[u8]) -> Result<Self, crate::document::CollabError> {
+        let (broadcast_tx, _) = broadcast::channel(256);
         Ok(Self {
             doc_id,
             document: CollabDocument::from_state(doc_id, state)?,
             awareness: AwarenessManager::new(doc_id),
             connections: Arc::new(RwLock::new(HashMap::new())),
+            broadcast_tx,
         })
     }
 
@@ -60,23 +89,36 @@ impl DocumentRoom {
         &self.awareness
     }
 
+    /// 订阅广播消息
+    pub fn subscribe(&self) -> broadcast::Receiver<BroadcastMessage> {
+        self.broadcast_tx.subscribe()
+    }
+
     /// 用户加入房间
     pub fn user_join(&self, user_id: Uuid) {
-        let mut connections = self.connections.write().unwrap();
-        connections.insert(
-            user_id,
-            ConnectionInfo {
+        {
+            let mut connections = self.connections.write().unwrap();
+            connections.insert(
                 user_id,
-                connected_at: chrono::Utc::now(),
-            },
-        );
+                ConnectionInfo {
+                    user_id,
+                    connected_at: chrono::Utc::now(),
+                },
+            );
+        }
+        // 广播用户加入消息
+        let _ = self.broadcast_tx.send(BroadcastMessage::UserJoined { user_id });
     }
 
     /// 用户离开房间
     pub fn user_leave(&self, user_id: &Uuid) {
-        let mut connections = self.connections.write().unwrap();
-        connections.remove(user_id);
+        {
+            let mut connections = self.connections.write().unwrap();
+            connections.remove(user_id);
+        }
         self.awareness.remove_state(user_id);
+        // 广播用户离开消息
+        let _ = self.broadcast_tx.send(BroadcastMessage::UserLeft { user_id: *user_id });
     }
 
     /// 获取在线用户列表
@@ -91,8 +133,19 @@ impl DocumentRoom {
         connections.len()
     }
 
-    /// 应用文档更新
-    pub fn apply_update(&self, update: &[u8]) -> Result<(), crate::document::CollabError> {
+    /// 应用文档更新并广播
+    pub fn apply_update(&self, update: &[u8], from_user: Uuid) -> Result<(), crate::document::CollabError> {
+        self.document.apply_update(update)?;
+        // 广播更新给其他用户
+        let _ = self.broadcast_tx.send(BroadcastMessage::DocUpdate {
+            from_user,
+            update: update.to_vec(),
+        });
+        Ok(())
+    }
+
+    /// 仅应用文档更新（不广播，用于初始化）
+    pub fn apply_update_silent(&self, update: &[u8]) -> Result<(), crate::document::CollabError> {
         self.document.apply_update(update)
     }
 
@@ -101,9 +154,31 @@ impl DocumentRoom {
         self.document.get_full_state()
     }
 
-    /// 更新用户感知状态
+    /// 更新用户感知状态并广播
     pub fn update_awareness(&self, user_id: Uuid, state: AwarenessState) {
-        self.awareness.set_state(user_id, state);
+        self.awareness.set_state(user_id, state.clone());
+        // 广播感知状态更新
+        let _ = self.broadcast_tx.send(BroadcastMessage::AwarenessUpdate {
+            user_id,
+            state,
+        });
+    }
+
+    /// 获取所有用户的感知状态
+    pub fn get_all_awareness(&self) -> HashMap<Uuid, AwarenessState> {
+        self.awareness.get_all_states()
+    }
+}
+
+impl Clone for DocumentRoom {
+    fn clone(&self) -> Self {
+        Self {
+            doc_id: self.doc_id,
+            document: self.document.clone(),
+            awareness: self.awareness.clone(),
+            connections: Arc::clone(&self.connections),
+            broadcast_tx: self.broadcast_tx.clone(),
+        }
     }
 }
 
@@ -228,7 +303,7 @@ mod tests {
 
         // 创建房间
         let room1 = manager.get_or_create_room(doc_id1);
-        let room2 = manager.get_or_create_room(doc_id2);
+        let _room2 = manager.get_or_create_room(doc_id2);
 
         assert_eq!(manager.get_active_room_count(), 2);
 
@@ -238,5 +313,36 @@ mod tests {
         // 移除空房间
         manager.remove_room_if_empty(&doc_id2);
         assert_eq!(manager.get_active_room_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_broadcast() {
+        let doc_id = Uuid::new_v4();
+        let room = DocumentRoom::new(doc_id);
+
+        let user1 = Uuid::new_v4();
+        let user2 = Uuid::new_v4();
+
+        // 订阅广播
+        let mut rx = room.subscribe();
+
+        // 用户加入
+        room.user_join(user1);
+
+        // 接收广播消息
+        if let Ok(BroadcastMessage::UserJoined { user_id }) = rx.recv().await {
+            assert_eq!(user_id, user1);
+        } else {
+            panic!("Expected UserJoined message");
+        }
+
+        // 用户离开
+        room.user_leave(&user1);
+
+        if let Ok(BroadcastMessage::UserLeft { user_id }) = rx.recv().await {
+            assert_eq!(user_id, user1);
+        } else {
+            panic!("Expected UserLeft message");
+        }
     }
 }
