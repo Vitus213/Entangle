@@ -29,6 +29,28 @@ fn default_limit() -> i64 {
     20
 }
 
+#[derive(Debug, Deserialize)]
+pub struct SearchQuery {
+    /// 搜索关键词（标题模糊匹配）
+    pub q: Option<String>,
+    /// 文件夹 ID 筛选
+    pub folder_id: Option<Uuid>,
+    /// 标签 ID 筛选
+    pub tag_id: Option<Uuid>,
+    /// 是否公开
+    pub is_public: Option<bool>,
+    #[serde(default = "default_limit")]
+    pub limit: i64,
+    #[serde(default)]
+    pub offset: i64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DuplicateRequest {
+    /// 新文档标题（可选，默认为 "原标题 (副本)"）
+    pub title: Option<String>,
+}
+
 /// 创建文档
 async fn create_document(
     State(pool): State<PgPool>,
@@ -180,6 +202,50 @@ async fn remove_collaborator(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// 搜索文档
+async fn search_documents(
+    State(pool): State<PgPool>,
+    user: AuthUser,
+    Query(search): Query<SearchQuery>,
+) -> AppResult<Json<Vec<DocumentListItem>>> {
+    let documents = DocumentRepository::search(
+        &pool,
+        user.user_id,
+        search.q.as_deref(),
+        search.folder_id,
+        search.tag_id,
+        search.is_public,
+        search.limit,
+        search.offset,
+    )
+    .await?;
+
+    Ok(Json(documents))
+}
+
+/// 复制文档
+async fn duplicate_document(
+    State(pool): State<PgPool>,
+    user: AuthUser,
+    Path(doc_id): Path<Uuid>,
+    Json(dup_data): Json<DuplicateRequest>,
+) -> AppResult<Json<DocumentResponse>> {
+    // 检查读取权限（可以复制有读取权限的文档）
+    if !DocumentPermissionService::can_read(&pool, user.user_id, doc_id).await? {
+        return Err(AppError::Forbidden("无权访问该文档".to_string()));
+    }
+
+    // 复制文档
+    let document = DocumentRepository::duplicate(&pool, doc_id, user.user_id, dup_data.title).await?;
+
+    // 获取完整文档信息
+    let doc_response = DocumentRepository::get_detail(&pool, document.id)
+        .await?
+        .ok_or_else(|| AppError::Internal("复制文档后无法获取".to_string()))?;
+
+    Ok(Json(doc_response))
+}
+
 /// 文档路由
 pub fn document_routes() -> Router<PgPool> {
     Router::new()
@@ -192,6 +258,9 @@ pub fn document_routes() -> Router<PgPool> {
         .route("/documents/my", get(list_my_documents))
         .route("/documents/accessible", get(list_accessible_documents))
         .route("/documents/public", get(list_public_documents))
+        // 搜索和复制
+        .route("/documents/search", get(search_documents))
+        .route("/documents/:id/duplicate", post(duplicate_document))
         // 协作者管理
         .route("/documents/:id/collaborators", post(add_collaborator))
         .route(

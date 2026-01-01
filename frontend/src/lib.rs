@@ -33,7 +33,9 @@ struct UserResponse {
     email: String,
     nickname: String,
     avatar_url: Option<String>,
-    role_name: String,
+    role: Option<String>,
+    email_verified: bool,
+    created_at: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -188,6 +190,7 @@ async fn create_document_api(token: &str, title: String) -> Result<Document, Str
             title,
             content: String::new(),
             is_public: false,
+            folder_id: None,
         })
         .map_err(|e| format!("请求失败: {}", e))?
         .send()
@@ -475,7 +478,7 @@ fn DocumentsPage() -> impl IntoView {
     let (new_tag_name, set_new_tag_name) = create_signal(String::new());
     let (new_tag_color, set_new_tag_color) = create_signal(String::from("#3B82F6"));
 
-    let (sidebar_collapsed, set_sidebar_collapsed) = create_signal(false);
+    let (sidebar_collapsed, _set_sidebar_collapsed) = create_signal(false);
 
     let navigate = use_navigate();
     let nav_clone1 = navigate.clone();
@@ -517,10 +520,11 @@ fn DocumentsPage() -> impl IntoView {
     });
 
     // 创建文档
+    let nav_for_create = navigate.clone();
     let create_document = move |_| {
         if let Some(token) = get_token() {
             let title = new_doc_title.get();
-            let nav = navigate.clone();
+            let nav = nav_for_create.clone();
             spawn_local(async move {
                 match create_document_api(&token, title).await {
                     Ok(doc) => nav(&format!("/editor/{}", doc.id), Default::default()),
@@ -572,9 +576,10 @@ fn DocumentsPage() -> impl IntoView {
     };
 
     // 登出
+    let nav_for_logout = navigate.clone();
     let logout = move |_| {
         clear_token();
-        navigate("/", Default::default());
+        nav_for_logout("/", Default::default());
     };
 
     view! {
@@ -685,34 +690,39 @@ fn DocumentsPage() -> impl IntoView {
 
                 // 主内容区
                 <div class="content-area">
-                    {move || show_create_doc.get().then(|| view! {
-                        <div class="create-doc-form">
-                            <h2>"创建新文档"</h2>
-                            <input
-                                type="text"
-                                placeholder="文档标题"
-                                prop:value=move || new_doc_title.get()
-                                on:input=move |ev| set_new_doc_title.set(event_target_value(&ev))
-                                class="input-lg"
-                            />
-                            <div class="form-actions">
-                                <button class="btn btn-primary" on:click=create_document>"创建"</button>
-                                <button class="btn btn-secondary" on:click=move |_| set_show_create_doc.set(false)>"取消"</button>
+                    {move || show_create_doc.get().then(|| {
+                        let create_document = create_document.clone();
+                        view! {
+                            <div class="create-doc-form">
+                                <h2>"创建新文档"</h2>
+                                <input
+                                    type="text"
+                                    placeholder="文档标题"
+                                    prop:value=move || new_doc_title.get()
+                                    on:input=move |ev| set_new_doc_title.set(event_target_value(&ev))
+                                    class="input-lg"
+                                />
+                                <div class="form-actions">
+                                    <button class="btn btn-primary" on:click=create_document>"创建"</button>
+                                    <button class="btn btn-secondary" on:click=move |_| set_show_create_doc.set(false)>"取消"</button>
+                                </div>
                             </div>
-                        </div>
+                        }
                     })}
 
-                    {move || if loading.get() {
-                        view! { <div class="loading">"加载中..."</div> }.into_view()
-                    } else if let Some(err) = error.get() {
-                        view! { <div class="error">{err}</div> }.into_view()
-                    } else {
-                        let docs = documents.get();
-                        if docs.is_empty() {
-                            view! { <p class="empty">"还没有文档，点击右上角创建一个吧！"</p> }.into_view()
+                    {
+                        let nav_for_docs = navigate.clone();
+                        move || if loading.get() {
+                            view! { <div class="loading">"加载中..."</div> }.into_view()
+                        } else if let Some(err) = error.get() {
+                            view! { <div class="error">{err}</div> }.into_view()
                         } else {
-                            let nav = navigate.clone();
-                            view! {
+                            let docs = documents.get();
+                            if docs.is_empty() {
+                                view! { <p class="empty">"还没有文档，点击右上角创建一个吧！"</p> }.into_view()
+                            } else {
+                                let nav = nav_for_docs.clone();
+                                view! {
                                 <div class="documents-grid">
                                     <For
                                         each=move || documents.get()
@@ -734,8 +744,8 @@ fn DocumentsPage() -> impl IntoView {
                                                         doc.content.chars().take(100).collect::<String>()
                                                     }</p>
                                                     <p class="card-meta">
-                                                        <span>"创建于: "{&doc.created_at[..10]}</span>
-                                                        <span>"更新于: "{&doc.updated_at[..10]}</span>
+                                                        <span>"创建于: "{doc.created_at.chars().take(10).collect::<String>()}</span>
+                                                        <span>"更新于: "{doc.updated_at.chars().take(10).collect::<String>()}</span>
                                                     </p>
                                                 </div>
                                             }
@@ -859,7 +869,7 @@ pub fn App() -> impl IntoView {
     provide_meta_context();
 
     view! {
-        <Router>
+        <Router base="/">
             <Routes>
                 <Route path="/" view=LoginPage/>
                 <Route path="/register" view=RegisterPage/>

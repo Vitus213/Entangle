@@ -61,13 +61,13 @@ async fn register(
     let password_hash = hash_password(&user_data.password)
         .map_err(|e| AppError::Internal(format!("Failed to hash password: {}", e)))?;
 
-    // Get default viewer role
-    let viewer_role = RoleRepository::find_by_name(&pool, "viewer")
+    // Get default editor role (allows creating documents)
+    let editor_role = RoleRepository::find_by_name(&pool, "editor")
         .await?
-        .ok_or_else(|| AppError::Internal("Default viewer role not found".to_string()))?;
+        .ok_or_else(|| AppError::Internal("Default editor role not found".to_string()))?;
 
     // Create user
-    let user = UserRepository::create(&pool, &user_data, password_hash, viewer_role.id).await?;
+    let user = UserRepository::create(&pool, &user_data, password_hash, editor_role.id).await?;
 
     // Get user with role
     let user_response = UserRepository::get_user_with_role(&pool, user.id)

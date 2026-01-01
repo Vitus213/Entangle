@@ -323,4 +323,156 @@ impl DocumentRepository {
             })
             .collect())
     }
+
+    /// 搜索文档（支持标题搜索和筛选）
+    pub async fn search(
+        pool: &PgPool,
+        user_id: Uuid,
+        query: Option<&str>,
+        folder_id: Option<Uuid>,
+        tag_id: Option<Uuid>,
+        is_public: Option<bool>,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<DocumentListItem>, sqlx::Error> {
+        let mut conditions = vec![
+            "(d.owner_id = $1 OR EXISTS (
+                SELECT 1 FROM document_collaborators dc
+                WHERE dc.document_id = d.id AND dc.user_id = $1
+            ) OR d.is_public = true)".to_string()
+        ];
+
+        let mut param_count = 1;
+
+        // 标题搜索（使用 ILIKE 实现模糊匹配）
+        let title_param = if let Some(q) = query {
+            param_count += 1;
+            conditions.push(format!("d.title ILIKE ${}", param_count));
+            Some(format!("%{}%", q))
+        } else {
+            None
+        };
+
+        // 文件夹筛选
+        let folder_param = if let Some(fid) = folder_id {
+            param_count += 1;
+            conditions.push(format!("d.folder_id = ${}", param_count));
+            Some(fid)
+        } else {
+            None
+        };
+
+        // 标签筛选
+        let tag_param = if let Some(tid) = tag_id {
+            param_count += 1;
+            conditions.push(format!(
+                "EXISTS (SELECT 1 FROM document_tags dt WHERE dt.document_id = d.id AND dt.tag_id = ${})",
+                param_count
+            ));
+            Some(tid)
+        } else {
+            None
+        };
+
+        // 公开状态筛选
+        let public_param = if let Some(pub_flag) = is_public {
+            param_count += 1;
+            conditions.push(format!("d.is_public = ${}", param_count));
+            Some(pub_flag)
+        } else {
+            None
+        };
+
+        let where_clause = conditions.join(" AND ");
+
+        param_count += 1;
+        let limit_param = param_count;
+        param_count += 1;
+        let offset_param = param_count;
+
+        let sql = format!(
+            r#"
+            SELECT DISTINCT
+                d.id, d.title, d.is_public, d.created_at, d.updated_at,
+                u.id as owner_id, u.nickname as owner_nickname, u.email as owner_email
+            FROM documents d
+            JOIN users u ON d.owner_id = u.id
+            WHERE {}
+            ORDER BY d.updated_at DESC
+            LIMIT ${} OFFSET ${}
+            "#,
+            where_clause, limit_param, offset_param
+        );
+
+        let mut query_builder = sqlx::query(&sql).bind(user_id);
+
+        if let Some(ref title) = title_param {
+            query_builder = query_builder.bind(title);
+        }
+        if let Some(fid) = folder_param {
+            query_builder = query_builder.bind(fid);
+        }
+        if let Some(tid) = tag_param {
+            query_builder = query_builder.bind(tid);
+        }
+        if let Some(pub_flag) = public_param {
+            query_builder = query_builder.bind(pub_flag);
+        }
+
+        query_builder = query_builder.bind(limit).bind(offset);
+
+        let rows = query_builder
+            .map(|row: sqlx::postgres::PgRow| {
+                use sqlx::Row;
+                DocumentListItem {
+                    id: row.get("id"),
+                    title: row.get("title"),
+                    owner: DocumentOwner {
+                        id: row.get("owner_id"),
+                        nickname: row.get("owner_nickname"),
+                        email: row.get("owner_email"),
+                    },
+                    is_public: row.get("is_public"),
+                    created_at: row.get("created_at"),
+                    updated_at: row.get("updated_at"),
+                }
+            })
+            .fetch_all(pool)
+            .await?;
+
+        Ok(rows)
+    }
+
+    /// 复制文档
+    pub async fn duplicate(
+        pool: &PgPool,
+        doc_id: Uuid,
+        owner_id: Uuid,
+        new_title: Option<String>,
+    ) -> Result<Document, sqlx::Error> {
+        // 获取原文档
+        let original = sqlx::query_as::<_, Document>("SELECT * FROM documents WHERE id = $1")
+            .bind(doc_id)
+            .fetch_one(pool)
+            .await?;
+
+        // 创建新文档
+        let new_id = Uuid::new_v4();
+        let title = new_title.unwrap_or_else(|| format!("{} (副本)", original.title));
+
+        sqlx::query_as::<_, Document>(
+            r#"
+            INSERT INTO documents (id, title, content, owner_id, is_public)
+            VALUES ($1, $2, $3, $4, $5)
+            RETURNING *
+            "#,
+        )
+        .bind(new_id)
+        .bind(title)
+        .bind(&original.content)
+        .bind(owner_id)
+        .bind(false) // 复制的文档默认为私有
+        .fetch_one(pool)
+        .await
+    }
 }
