@@ -41,11 +41,36 @@ pub async fn websocket_handler(
         return Err(AppError::Forbidden("无权访问该文档".to_string()));
     }
 
+    // 获取用户昵称（用于日志）
+    let user_nickname = sqlx::query_scalar::<_, String>(
+        "SELECT nickname FROM users WHERE id = $1"
+    )
+    .bind(user.user_id)
+    .fetch_optional(&pool)
+    .await
+    .ok()
+    .flatten()
+    .unwrap_or_else(|| user.user_id.to_string());
+
+    // 获取文档所有者昵称（用于日志）
+    let owner_nickname = sqlx::query_scalar::<_, String>(
+        "SELECT nickname FROM users WHERE id = $1"
+    )
+    .bind(doc.owner_id)
+    .fetch_optional(&pool)
+    .await
+    .ok()
+    .flatten()
+    .unwrap_or_else(|| doc.owner_id.to_string());
+
     tracing::info!(
-        "User {} connecting to document {} (owner: {})",
+        "User {} ({}) connecting to document \"{}\" ({}) (owner: {} ({}))",
         user.user_id,
+        user_nickname,
+        doc.title,
         doc_id,
-        doc.owner_id
+        doc.owner_id,
+        owner_nickname
     );
 
     Ok(ws.on_upgrade(move |socket| handle_socket(socket, doc_id, user.user_id, hub)))
@@ -67,7 +92,21 @@ async fn handle_socket(socket: WebSocket, doc_id: Uuid, user_id: Uuid, hub: WsHu
 
     // 用户加入房间
     room.user_join(user_id);
-    tracing::info!("User {} joined document {}", user_id, doc_id);
+
+    // 获取用户名（用于日志和通知）
+    let user_nickname = if let Some(pool) = hub.pool() {
+        sqlx::query_scalar::<_, String>("SELECT nickname FROM users WHERE id = $1")
+            .bind(user_id)
+            .fetch_optional(pool)
+            .await
+            .ok()
+            .flatten()
+    } else {
+        None
+    };
+
+    let display_name = user_nickname.as_deref().unwrap_or("Unknown");
+    tracing::info!("User {} ({}) joined document {}", user_id, display_name, doc_id);
 
     // 发送当前文档状态（方案一：发送文本内容）
     let text_content = room.get_text_content();
@@ -195,12 +234,26 @@ async fn handle_socket(socket: WebSocket, doc_id: Uuid, user_id: Uuid, hub: WsHu
     if user_count == 0 {
         // 保存文档状态
         if let Err(e) = hub.save_document(doc_id).await {
-            tracing::warn!("Failed to save document {} on room close: {}", doc_id, e);
+            // 获取文档标题用于日志
+            let doc_title = if let Some(pool) = hub.pool() {
+                sqlx::query_scalar::<_, String>(
+                    "SELECT title FROM documents WHERE id = $1"
+                )
+                .bind(doc_id)
+                .fetch_optional(pool)
+                .await
+                .ok()
+                .flatten()
+            } else {
+                None
+            };
+            let doc_name = doc_title.as_deref().unwrap_or_else(|| "Unknown");
+            tracing::warn!("Failed to save document \"{}\" ({}) on room close: {}", doc_name, doc_id, e);
         }
     }
 
     hub.room_manager().remove_room_if_empty(&doc_id);
-    tracing::info!("User {} left document {}", user_id, doc_id);
+    tracing::info!("User {} ({}) left document {}", user_id, display_name, doc_id);
 }
 
 /// 处理客户端消息，返回是否修改了文档
@@ -269,9 +322,11 @@ fn broadcast_to_ws_message(msg: BroadcastMessage) -> Option<WsMessage> {
             Some(WsMessage::Awareness { state })
         }
         BroadcastMessage::UserJoined { user_id } => {
+            // 从 awareness 状态中获取用户昵称
+            let nickname = format!("User {}", user_id); // 简化版，可以从 awareness 获取
             Some(WsMessage::UserJoined {
                 user_id,
-                nickname: String::new(), // 可以从 awareness 获取
+                nickname,
             })
         }
         BroadcastMessage::UserLeft { user_id } => {

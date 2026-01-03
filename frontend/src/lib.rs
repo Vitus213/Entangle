@@ -5,6 +5,11 @@ use serde::{Deserialize, Serialize};
 use gloo_net::http::Request;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
+use std::rc::Rc;
+use std::cell::RefCell;
+
+mod crdt;
+use crdt::{CrdtManager, bytes_to_hex, hex_to_bytes};
 
 // ===== 共享类型 =====
 
@@ -49,6 +54,8 @@ struct Document {
     is_public: bool,
     created_at: String,
     updated_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    crdt_state: Option<String>, // 十六进制编码的 CRDT 状态
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -914,6 +921,9 @@ fn EditorPage() -> impl IntoView {
     let (syncing, set_syncing) = create_signal(false); // 同步状态
     let (last_sync_time, set_last_sync_time) = create_signal(None::<f64>); // 上次同步时间
 
+    // CRDT 管理器
+    let (crdt_manager, set_crdt_manager) = create_signal(None::<Rc<RefCell<CrdtManager>>>);
+
     // 协作者管理
     let (collaborators, set_collaborators) = create_signal(Vec::<CollaboratorResponse>::new());
     let (show_collab_panel, set_show_collab_panel) = create_signal(false);
@@ -942,7 +952,42 @@ fn EditorPage() -> impl IntoView {
                 match fetch_document(&token_clone, &id_clone).await {
                     Ok(doc) => {
                         set_title.set(doc.title);
-                        set_content.set(doc.content);
+                        set_content.set(doc.content.clone());
+
+                        // 初始化 CRDT 管理器
+                        let mut manager = CrdtManager::new();
+
+                        // 如果有 CRDT 状态，从状态初始化；否则从文本内容初始化
+                        if let Some(crdt_hex) = doc.crdt_state {
+                            if !crdt_hex.is_empty() {
+                                leptos::logging::log!("从 CRDT 状态初始化文档");
+                                match hex_to_bytes(&crdt_hex) {
+                                    Ok(state) => {
+                                        if let Err(e) = manager.init_from_state(&state) {
+                                            leptos::logging::error!("初始化 CRDT 失败: {}", e);
+                                            // 回退到文本初始化
+                                            manager.set_text(&doc.content);
+                                        } else {
+                                            // 从 CRDT 获取文本并更新 UI
+                                            let text = manager.get_text();
+                                            set_content.set(text);
+                                        }
+                                    }
+                                    Err(e) => {
+                                        leptos::logging::error!("解码 CRDT 状态失败: {}", e);
+                                        manager.set_text(&doc.content);
+                                    }
+                                }
+                            } else {
+                                // 空状态，从文本初始化
+                                manager.set_text(&doc.content);
+                            }
+                        } else {
+                            // 没有 CRDT 状态，从文本初始化
+                            manager.set_text(&doc.content);
+                        }
+
+                        set_crdt_manager.set(Some(Rc::new(RefCell::new(manager))));
                         set_loading.set(false);
                     }
                     Err(e) => {
@@ -986,14 +1031,28 @@ fn EditorPage() -> impl IntoView {
                             if let Ok(msg) = serde_json::from_str::<WsMessage>(&msg_str) {
                                 match msg {
                                     WsMessage::Sync { update } => {
-                                        leptos::logging::log!("收到同步消息: {} bytes", update.len());
-                                        // 简化版：update 就是完整的文档内容（不是 CRDT 二进制）
-                                        // 暂时解析为文本内容
-                                        if !update.is_empty() {
-                                            set_content.set(update);
-                                            set_syncing.set(false);
-                                            // 记录同步时间（使用简单的时间戳）
-                                            set_last_sync_time.set(Some(1.0));
+                                        leptos::logging::log!("收到 CRDT 更新: {} 字符", update.len());
+
+                                        // 使用 CRDT 应用更新
+                                        if let Some(manager_rc) = crdt_manager.get() {
+                                            match hex_to_bytes(&update) {
+                                                Ok(update_bytes) => {
+                                                    let mut manager = manager_rc.borrow_mut();
+                                                    if let Err(e) = manager.apply_update(&update_bytes) {
+                                                        leptos::logging::error!("应用 CRDT 更新失败: {}", e);
+                                                    } else {
+                                                        // 更新成功，同步到 UI
+                                                        let text = manager.get_text();
+                                                        set_content.set(text);
+                                                        set_syncing.set(false);
+                                                        set_last_sync_time.set(Some(1.0));
+                                                        leptos::logging::log!("CRDT 更新已应用");
+                                                    }
+                                                }
+                                                Err(e) => {
+                                                    leptos::logging::error!("解码 CRDT 更新失败: {}", e);
+                                                }
+                                            }
                                         }
                                     }
                                     WsMessage::UserJoined { user_id, nickname } => {
@@ -1116,22 +1175,33 @@ fn EditorPage() -> impl IntoView {
         }
     };
 
-    // 通过 WebSocket 发送内容更新（防抖）
+    // 通过 WebSocket 发送 CRDT 更新
     let sync_content = move |new_content: String| {
         if let Some(websocket) = ws.get() {
-            set_syncing.set(true);
+            if let Some(manager_rc) = crdt_manager.get() {
+                set_syncing.set(true);
 
-            // 简化版：直接发送文本内容作为 update
-            let msg = WsMessage::Sync {
-                update: new_content,
-            };
+                let mut manager = manager_rc.borrow_mut();
 
-            if let Ok(msg_json) = serde_json::to_string(&msg) {
-                if websocket.send_with_str(&msg_json).is_ok() {
-                    leptos::logging::log!("内容已发送同步");
-                } else {
-                    leptos::logging::error!("发送同步消息失败");
-                    set_syncing.set(false);
+                // 更新 CRDT 文档
+                manager.set_text(&new_content);
+
+                // 获取完整状态（简化版，实际应该是增量更新）
+                let state = manager.get_state();
+                let hex_update = bytes_to_hex(&state);
+
+                // 发送 CRDT 更新
+                let msg = WsMessage::Sync {
+                    update: hex_update,
+                };
+
+                if let Ok(msg_json) = serde_json::to_string(&msg) {
+                    if websocket.send_with_str(&msg_json).is_ok() {
+                        leptos::logging::log!("CRDT 更新已发送");
+                    } else {
+                        leptos::logging::error!("发送 CRDT 更新失败");
+                        set_syncing.set(false);
+                    }
                 }
             }
         }

@@ -95,6 +95,7 @@ impl DocumentRepository {
             r#"
             SELECT
                 d.id, d.title, d.content, d.is_public, d.created_at, d.updated_at,
+                d.crdt_state,
                 u.id as owner_id, u.nickname as owner_nickname, u.email as owner_email
             FROM documents d
             JOIN users u ON d.owner_id = u.id
@@ -105,18 +106,26 @@ impl DocumentRepository {
         .fetch_optional(pool)
         .await?;
 
-        Ok(result.map(|row| DocumentResponse {
-            id: row.id,
-            title: row.title,
-            content: row.content,
-            owner: DocumentOwner {
-                id: row.owner_id,
-                nickname: row.owner_nickname,
-                email: row.owner_email,
-            },
-            is_public: row.is_public,
-            created_at: row.created_at,
-            updated_at: row.updated_at,
+        Ok(result.map(|row| {
+            // 将 crdt_state 转换为十六进制字符串
+            let crdt_state = row.crdt_state
+                .as_ref()
+                .map(|bytes| hex::encode(bytes));
+
+            DocumentResponse {
+                id: row.id,
+                title: row.title,
+                content: row.content,
+                owner: DocumentOwner {
+                    id: row.owner_id,
+                    nickname: row.owner_nickname,
+                    email: row.owner_email,
+                },
+                is_public: row.is_public,
+                created_at: row.created_at,
+                updated_at: row.updated_at,
+                crdt_state,
+            }
         }))
     }
 

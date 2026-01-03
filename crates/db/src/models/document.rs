@@ -46,6 +46,8 @@ pub struct DocumentResponse {
     pub is_public: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub crdt_state: Option<String>, // 十六进制编码的 CRDT 状态
 }
 
 /// 文档作者信息

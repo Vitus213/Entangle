@@ -107,7 +107,18 @@ impl WsHub {
             ps.dirty = false;
         }
 
-        tracing::info!("Saved CRDT state for document {}", doc_id);
+        // 获取文档标题用于日志
+        let doc_title = sqlx::query_scalar::<_, String>(
+            "SELECT title FROM documents WHERE id = $1"
+        )
+        .bind(doc_id)
+        .fetch_optional(pool.as_ref())
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or_else(|| doc_id.to_string());
+
+        tracing::info!("Saved CRDT state for document \"{}\" ({})", doc_title, doc_id);
         Ok(())
     }
 
@@ -122,7 +133,19 @@ impl WsHub {
             self.room_manager
                 .get_or_create_room_with_state(doc_id, &state)
                 .map_err(|e| e.to_string())?;
-            tracing::info!("Loaded CRDT state for document {}", doc_id);
+
+            // 获取文档标题用于日志
+            let doc_title = sqlx::query_scalar::<_, String>(
+                "SELECT title FROM documents WHERE id = $1"
+            )
+            .bind(doc_id)
+            .fetch_optional(pool.as_ref())
+            .await
+            .ok()
+            .flatten()
+            .unwrap_or_else(|| doc_id.to_string());
+
+            tracing::info!("Loaded CRDT state for document \"{}\" ({})", doc_title, doc_id);
         }
 
         Ok(())
@@ -161,14 +184,37 @@ impl WsHub {
                                 )
                                 .await
                                 {
-                                    tracing::error!("Failed to save CRDT state for {}: {}", doc_id, e);
+                                    // 获取文档标题用于日志
+                                    let doc_title = sqlx::query_scalar::<_, String>(
+                                        "SELECT title FROM documents WHERE id = $1"
+                                    )
+                                    .bind(doc_id)
+                                    .fetch_optional(pool.as_ref())
+                                    .await
+                                    .ok()
+                                    .flatten()
+                                    .unwrap_or_else(|| doc_id.to_string());
+
+                                    tracing::error!("Failed to save CRDT state for document \"{}\" ({}): {}", doc_title, doc_id, e);
                                 } else {
                                     let mut states = persistence_states.write().await;
                                     if let Some(ps) = states.get_mut(&doc_id) {
                                         ps.last_save = std::time::Instant::now();
                                         ps.dirty = false;
                                     }
-                                    tracing::debug!("Auto-saved CRDT state for {}", doc_id);
+
+                                    // 获取文档标题用于日志
+                                    let doc_title = sqlx::query_scalar::<_, String>(
+                                        "SELECT title FROM documents WHERE id = $1"
+                                    )
+                                    .bind(doc_id)
+                                    .fetch_optional(pool.as_ref())
+                                    .await
+                                    .ok()
+                                    .flatten()
+                                    .unwrap_or_else(|| doc_id.to_string());
+
+                                    tracing::debug!("Auto-saved CRDT state for document \"{}\" ({})", doc_title, doc_id);
                                 }
                             }
                         }
@@ -201,9 +247,31 @@ impl WsHub {
                     if let Err(e) =
                         DocumentRepository::save_crdt_state_with_content(pool, doc_id, &state, &content).await
                     {
-                        tracing::error!("Failed to save CRDT state for {}: {}", doc_id, e);
+                        // 获取文档标题用于日志
+                        let doc_title = sqlx::query_scalar::<_, String>(
+                            "SELECT title FROM documents WHERE id = $1"
+                        )
+                        .bind(doc_id)
+                        .fetch_optional(pool.as_ref())
+                        .await
+                        .ok()
+                        .flatten()
+                        .unwrap_or_else(|| doc_id.to_string());
+
+                        tracing::error!("Failed to save CRDT state for document \"{}\" ({}): {}", doc_title, doc_id, e);
                     } else {
-                        tracing::info!("Saved CRDT state for {} on shutdown", doc_id);
+                        // 获取文档标题用于日志
+                        let doc_title = sqlx::query_scalar::<_, String>(
+                            "SELECT title FROM documents WHERE id = $1"
+                        )
+                        .bind(doc_id)
+                        .fetch_optional(pool.as_ref())
+                        .await
+                        .ok()
+                        .flatten()
+                        .unwrap_or_else(|| doc_id.to_string());
+
+                        tracing::info!("Saved CRDT state for document \"{}\" ({}) on shutdown", doc_title, doc_id);
                     }
                 }
             }
