@@ -93,10 +93,7 @@ DEBUG Auto-saved CRDT state for document "项目计划书" (2f93238c-5071-4862-a
 ## 🔧 技术实现
 
 ### 查询模式
-所有昵称/标题查询都使用相同模式：
-
-```rust
-let doc_title = sqlx::query_scalar::<_, String>(
+所有昵称/标题查询都使用相同模式：String>(
     "SELECT title FROM documents WHERE id = $1"
 )
 .bind(doc_id)

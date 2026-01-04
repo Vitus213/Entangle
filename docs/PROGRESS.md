@@ -1,12 +1,12 @@
 # Entangle 项目开发进度
 
-> 最后更新: 2026-01-01
+> 最后更新: 2026-01-04
 
 ## 📊 总体进度
 
-- **已完成**: 6/8 阶段 (75%)
+- **已完成**: 7/8 阶段 (87.5%)
 - **进行中**: 0/8 阶段
-- **待开始**: 2/8 阶段
+- **待开始**: 1/8 阶段
 
 ---
 
@@ -219,12 +219,41 @@
 
 ## ⏳ 待开始阶段
 
-### 阶段 5: 评论与通知 (0%)
+### 阶段 5: 评论与通知 (100%) ✅
 
-**功能列表**:
-- 评论系统 (创建/回复/@提及)
-- 通知系统 (实时推送/列表)
-- 任务系统 (创建/分配/跟踪)
+**完成时间**: 2026-01-04
+
+**核心成果**:
+- ✅ 评论系统 (创建/回复/解决)
+- ✅ 通知系统 (创建/列表/已读管理)
+- ✅ 任务系统 (CRUD/状态更新/分配)
+
+**数据库**:
+- `comments` 表
+- `notifications` 表
+- `tasks` 表
+
+**API 端点**:
+- `POST /api/comments` - 创建评论
+- `GET /api/comments/:id` - 获取评论详情
+- `PUT /api/comments/:id` - 更新评论
+- `DELETE /api/comments/:id` - 删除评论
+- `GET /api/comments/:id/replies` - 获取回复
+- `PUT /api/comments/:id/resolve` - 标记已解决
+- `GET /api/documents/:id/comments` - 获取文档评论
+- `GET /api/notifications` - 获取通知列表
+- `GET /api/notifications/unread-count` - 未读数量
+- `PUT /api/notifications/:id/read` - 标记已读
+- `PUT /api/notifications/read-all` - 全部已读
+- `DELETE /api/notifications/:id` - 删除通知
+- `POST /api/tasks` - 创建任务
+- `GET /api/tasks` - 获取任务列表
+- `GET /api/tasks/:id` - 获取任务详情
+- `PUT /api/tasks/:id` - 更新任务
+- `DELETE /api/tasks/:id` - 删除任务
+- `PUT /api/tasks/:id/status` - 更新状态
+- `PUT /api/tasks/:id/assign` - 分配任务
+- `GET /api/documents/:id/tasks` - 获取文档任务
 
 ---
 
@@ -292,6 +321,12 @@
 
 ## 📝 最新提交
 
+- `feat: 实现评论、通知和任务系统` (2026-01-04)
+  - 完成评论系统 API (创建/回复/解决)
+  - 完成通知系统 API (列表/已读管理)
+  - 完成任务系统 API (CRUD/状态/分配)
+  - 创建数据库迁移脚本
+  - 集成到主路由
 - `feat: 完整集成前端 CRDT 实时协作` (2026-01-03)
   - 修改后端 DocumentResponse 包含 crdt_state
   - 实现 CrdtManager 集成到 EditorPage

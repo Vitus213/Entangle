@@ -4,6 +4,9 @@ pub mod permission;
 pub mod document;
 pub mod folder;
 pub mod tag;
+pub mod comment;
+pub mod notification;
+pub mod task;
 
 pub use user::{User, CreateUser, LoginUser, UserResponse};
 pub use role::Role;
@@ -21,4 +24,16 @@ pub use folder::{
 pub use tag::{
     Tag, CreateTag, UpdateTag, TagWithCount, TagSummary,
     AddTagToDocument, SetDocumentTags, DocumentTag,
+};
+pub use comment::{
+    Comment, CreateComment, UpdateComment, CommentResponse,
+    CommentListItem, CommentUser, CommentPosition,
+};
+pub use notification::{
+    Notification, CreateNotification, NotificationResponse,
+    NotificationType, ResourceType, NotificationSender, UnreadCountResponse,
+};
+pub use task::{
+    Task, CreateTask, UpdateTask, UpdateTaskStatus, TaskResponse,
+    TaskListItem, TaskUser, TaskStatus, TaskPriority,
 };

@@ -87,6 +87,15 @@ impl DocumentPermissionService {
         }
     }
 
+    /// 检查用户是否是文档所有者
+    pub async fn is_owner(
+        pool: &PgPool,
+        user_id: Uuid,
+        doc_id: Uuid,
+    ) -> Result<bool, sqlx::Error> {
+        Self::can_delete(pool, user_id, doc_id).await
+    }
+
     /// 检查用户是否有 document:* 权限（基于 RBAC）
     pub async fn has_document_permission(
         pool: &PgPool,

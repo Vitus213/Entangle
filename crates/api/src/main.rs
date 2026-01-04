@@ -70,6 +70,9 @@ async fn main() -> anyhow::Result<()> {
         .nest("/api", routes::document_routes())
         .nest("/api", routes::folder_routes())
         .nest("/api", routes::tag_routes())
+        .nest("/api", routes::comment_routes())
+        .nest("/api", routes::notification_routes())
+        .nest("/api", routes::task_routes())
         .layer(cors)
         .with_state(pool);
 

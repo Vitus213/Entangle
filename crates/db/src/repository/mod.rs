@@ -4,6 +4,9 @@ pub mod permission;
 pub mod document;
 pub mod folder;
 pub mod tag;
+pub mod comment;
+pub mod notification;
+pub mod task;
 
 pub use user::UserRepository;
 pub use role::RoleRepository;
@@ -11,3 +14,6 @@ pub use permission::PermissionRepository;
 pub use document::DocumentRepository;
 pub use folder::FolderRepository;
 pub use tag::TagRepository;
+pub use comment::CommentRepository;
+pub use notification::NotificationRepository;
+pub use task::TaskRepository;
