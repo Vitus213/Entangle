@@ -7,6 +7,7 @@ pub mod tag;
 pub mod comment;
 pub mod notification;
 pub mod task;
+pub mod version;
 
 pub use user::{User, CreateUser, LoginUser, UserResponse};
 pub use role::Role;
@@ -36,4 +37,8 @@ pub use notification::{
 pub use task::{
     Task, CreateTask, UpdateTask, UpdateTaskStatus, TaskResponse,
     TaskListItem, TaskUser, TaskStatus, TaskPriority,
+};
+pub use version::{
+    DocumentVersion, CreateVersion, VersionResponse, VersionListItem,
+    VersionCreator, VersionDiff, DiffLine, DiffOperation, RollbackRequest,
 };

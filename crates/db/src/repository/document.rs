@@ -575,4 +575,28 @@ impl DocumentRepository {
         .fetch_one(pool)
         .await
     }
+
+    /// 更新文档内容（用于版本回滚）
+    pub async fn update_content(
+        pool: &PgPool,
+        doc_id: Uuid,
+        title: String,
+        content: String,
+        crdt_state: Option<Vec<u8>>,
+    ) -> Result<Document, sqlx::Error> {
+        sqlx::query_as::<_, Document>(
+            r#"
+            UPDATE documents
+            SET title = $2, content = $3, crdt_state = $4, updated_at = NOW()
+            WHERE id = $1
+            RETURNING *
+            "#,
+        )
+        .bind(doc_id)
+        .bind(title)
+        .bind(content)
+        .bind(crdt_state)
+        .fetch_one(pool)
+        .await
+    }
 }

@@ -7,6 +7,7 @@ pub mod tag;
 pub mod comment;
 pub mod notification;
 pub mod task;
+pub mod version;
 
 pub use user::UserRepository;
 pub use role::RoleRepository;
@@ -17,3 +18,4 @@ pub use tag::TagRepository;
 pub use comment::CommentRepository;
 pub use notification::NotificationRepository;
 pub use task::TaskRepository;
+pub use version::VersionRepository;

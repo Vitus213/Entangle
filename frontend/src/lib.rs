@@ -120,12 +120,36 @@ struct Tag {
     name: String,
     color: String,
     owner_id: String,
+    created_at: String,
+    updated_at: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct TagWithCount {
-    tag: Tag,
+    // 后端使用 #[serde(flatten)]，所以字段是扁平化的
+    id: String,
+    name: String,
+    color: String,
+    owner_id: String,
     document_count: i32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    created_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    updated_at: Option<String>,
+}
+
+impl TagWithCount {
+    /// 转换为 Tag
+    fn to_tag(&self) -> Tag {
+        Tag {
+            id: self.id.clone(),
+            name: self.name.clone(),
+            color: self.color.clone(),
+            owner_id: self.owner_id.clone(),
+            created_at: self.created_at.clone().unwrap_or_default(),
+            updated_at: self.updated_at.clone().unwrap_or_default(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -166,6 +190,213 @@ impl std::fmt::Display for CollaboratorPermission {
 struct AddCollaboratorRequest {
     email: String,
     permission: CollaboratorPermission,
+}
+
+// ===== 评论系统类型 =====
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct CommentPosition {
+    start: i32,
+    end: i32,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct CommentUser {
+    id: String,
+    nickname: String,
+    avatar_url: Option<String>,
+}
+
+/// 评论列表项（用于获取文档评论列表）
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct CommentListItem {
+    id: String,
+    doc_id: String,
+    user: CommentUser,
+    parent_id: Option<String>,
+    content: String,
+    position: Option<CommentPosition>,
+    is_resolved: bool,
+    reply_count: i64,
+    created_at: String,
+    updated_at: String,
+}
+
+/// 评论响应（用于创建/更新评论的响应，包含嵌套回复）
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct CommentResponse {
+    id: String,
+    doc_id: String,
+    user: CommentUser,
+    parent_id: Option<String>,
+    content: String,
+    position: Option<CommentPosition>,
+    is_resolved: bool,
+    #[serde(default)]
+    replies: Vec<CommentResponse>,
+    created_at: String,
+    updated_at: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct CreateCommentRequest {
+    doc_id: String,
+    content: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    parent_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    position: Option<CommentPosition>,
+}
+
+// ===== 通知系统类型 =====
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum NotificationType {
+    Comment,
+    Mention,
+    Task,
+    Share,
+    System,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct NotificationSender {
+    id: String,
+    nickname: String,
+    avatar_url: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct Notification {
+    id: String,
+    notification_type: String,
+    title: String,
+    content: Option<String>,
+    resource_type: Option<String>,
+    resource_id: Option<String>,
+    sender: Option<NotificationSender>,
+    is_read: bool,
+    created_at: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct UnreadCount {
+    count: i32,
+}
+
+// ===== 任务系统类型 =====
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum TaskStatus {
+    Pending,
+    InProgress,
+    Completed,
+    Cancelled,
+}
+
+impl TaskStatus {
+    fn display(&self) -> &'static str {
+        match self {
+            TaskStatus::Pending => "待处理",
+            TaskStatus::InProgress => "进行中",
+            TaskStatus::Completed => "已完成",
+            TaskStatus::Cancelled => "已取消",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum TaskPriority {
+    Low,
+    Medium,
+    High,
+    Urgent,
+}
+
+impl Default for TaskPriority {
+    fn default() -> Self {
+        TaskPriority::Medium
+    }
+}
+
+impl TaskPriority {
+    fn display(&self) -> &'static str {
+        match self {
+            TaskPriority::Low => "低",
+            TaskPriority::Medium => "中",
+            TaskPriority::High => "高",
+            TaskPriority::Urgent => "紧急",
+        }
+    }
+
+    fn color(&self) -> &'static str {
+        match self {
+            TaskPriority::Low => "#6B7280",
+            TaskPriority::Medium => "#3B82F6",
+            TaskPriority::High => "#F59E0B",
+            TaskPriority::Urgent => "#EF4444",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct TaskUser {
+    id: String,
+    nickname: String,
+    avatar_url: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct Task {
+    id: String,
+    doc_id: Option<String>,
+    doc_title: Option<String>,
+    title: String,
+    description: Option<String>,
+    assignee: Option<TaskUser>,
+    created_by: TaskUser,
+    status: String,
+    priority: String,
+    due_date: Option<String>,
+    completed_at: Option<String>,
+    created_at: String,
+    updated_at: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct TaskListItem {
+    id: String,
+    doc_id: Option<String>,
+    doc_title: Option<String>,
+    title: String,
+    assignee: Option<TaskUser>,
+    status: String,
+    priority: String,
+    due_date: Option<String>,
+    created_at: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct CreateTaskRequest {
+    title: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    doc_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    assignee_id: Option<String>,
+    #[serde(default)]
+    priority: TaskPriority,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    due_date: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct UpdateTaskStatusRequest {
+    status: TaskStatus,
 }
 
 // WebSocket 消息类型
@@ -440,6 +671,222 @@ async fn remove_collaborator_api(token: &str, doc_id: &str, user_id: &str) -> Re
     }
 }
 
+// ===== 评论 API =====
+
+async fn fetch_comments(token: &str, doc_id: &str) -> Result<Vec<CommentListItem>, String> {
+    let response = Request::get(&format!("{}/api/documents/{}/comments", API_BASE, doc_id))
+        .header("Authorization", &format!("Bearer {}", token))
+        .send()
+        .await
+        .map_err(|e| format!("网络错误: {}", e))?;
+
+    if response.ok() {
+        response.json().await.map_err(|e| format!("解析失败: {}", e))
+    } else {
+        Err(format!("获取评论失败: {}", response.status()))
+    }
+}
+
+async fn create_comment_api(token: &str, request: CreateCommentRequest) -> Result<CommentResponse, String> {
+    let response = Request::post(&format!("{}/api/comments", API_BASE))
+        .header("Authorization", &format!("Bearer {}", token))
+        .json(&request)
+        .map_err(|e| format!("请求失败: {}", e))?
+        .send()
+        .await
+        .map_err(|e| format!("网络错误: {}", e))?;
+
+    if response.ok() {
+        response.json().await.map_err(|e| format!("解析失败: {}", e))
+    } else {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        Err(format!("创建评论失败 ({}): {}", status, body))
+    }
+}
+
+async fn resolve_comment_api(token: &str, comment_id: &str) -> Result<CommentResponse, String> {
+    let response = Request::put(&format!("{}/api/comments/{}/resolve", API_BASE, comment_id))
+        .header("Authorization", &format!("Bearer {}", token))
+        .send()
+        .await
+        .map_err(|e| format!("网络错误: {}", e))?;
+
+    if response.ok() {
+        response.json().await.map_err(|e| format!("解析失败: {}", e))
+    } else {
+        Err(format!("操作失败: {}", response.status()))
+    }
+}
+
+async fn unresolve_comment_api(token: &str, comment_id: &str) -> Result<CommentResponse, String> {
+    let response = Request::put(&format!("{}/api/comments/{}/unresolve", API_BASE, comment_id))
+        .header("Authorization", &format!("Bearer {}", token))
+        .send()
+        .await
+        .map_err(|e| format!("网络错误: {}", e))?;
+
+    if response.ok() {
+        response.json().await.map_err(|e| format!("解析失败: {}", e))
+    } else {
+        Err(format!("操作失败: {}", response.status()))
+    }
+}
+
+async fn delete_comment_api(token: &str, comment_id: &str) -> Result<(), String> {
+    let response = Request::delete(&format!("{}/api/comments/{}", API_BASE, comment_id))
+        .header("Authorization", &format!("Bearer {}", token))
+        .send()
+        .await
+        .map_err(|e| format!("网络错误: {}", e))?;
+
+    if response.ok() {
+        Ok(())
+    } else {
+        Err(format!("删除评论失败: {}", response.status()))
+    }
+}
+
+// ===== 通知 API =====
+
+async fn fetch_notifications(token: &str) -> Result<Vec<Notification>, String> {
+    let response = Request::get(&format!("{}/api/notifications?limit=50", API_BASE))
+        .header("Authorization", &format!("Bearer {}", token))
+        .send()
+        .await
+        .map_err(|e| format!("网络错误: {}", e))?;
+
+    if response.ok() {
+        response.json().await.map_err(|e| format!("解析失败: {}", e))
+    } else {
+        Err(format!("获取通知失败: {}", response.status()))
+    }
+}
+
+async fn fetch_unread_count(token: &str) -> Result<UnreadCount, String> {
+    let response = Request::get(&format!("{}/api/notifications/unread-count", API_BASE))
+        .header("Authorization", &format!("Bearer {}", token))
+        .send()
+        .await
+        .map_err(|e| format!("网络错误: {}", e))?;
+
+    if response.ok() {
+        response.json().await.map_err(|e| format!("解析失败: {}", e))
+    } else {
+        Err(format!("获取未读数失败: {}", response.status()))
+    }
+}
+
+async fn mark_notification_read(token: &str, notification_id: &str) -> Result<(), String> {
+    let response = Request::put(&format!("{}/api/notifications/{}/read", API_BASE, notification_id))
+        .header("Authorization", &format!("Bearer {}", token))
+        .send()
+        .await
+        .map_err(|e| format!("网络错误: {}", e))?;
+
+    if response.ok() {
+        Ok(())
+    } else {
+        Err(format!("标记已读失败: {}", response.status()))
+    }
+}
+
+async fn mark_all_notifications_read(token: &str) -> Result<i32, String> {
+    let response = Request::put(&format!("{}/api/notifications/read-all", API_BASE))
+        .header("Authorization", &format!("Bearer {}", token))
+        .send()
+        .await
+        .map_err(|e| format!("网络错误: {}", e))?;
+
+    if response.ok() {
+        #[derive(Deserialize)]
+        struct MarkAllResponse {
+            marked_count: i32,
+        }
+        response.json().await.map_err(|e| format!("解析失败: {}", e)).map(|r: MarkAllResponse| r.marked_count)
+    } else {
+        Err(format!("标记全部已读失败: {}", response.status()))
+    }
+}
+
+async fn delete_notification(token: &str, notification_id: &str) -> Result<(), String> {
+    let response = Request::delete(&format!("{}/api/notifications/{}", API_BASE, notification_id))
+        .header("Authorization", &format!("Bearer {}", token))
+        .send()
+        .await
+        .map_err(|e| format!("网络错误: {}", e))?;
+
+    if response.ok() {
+        Ok(())
+    } else {
+        Err(format!("删除通知失败: {}", response.status()))
+    }
+}
+
+// ===== 任务 API =====
+
+async fn fetch_tasks(token: &str, filter: &str) -> Result<Vec<TaskListItem>, String> {
+    let response = Request::get(&format!("{}/api/tasks?filter={}&limit=50", API_BASE, filter))
+        .header("Authorization", &format!("Bearer {}", token))
+        .send()
+        .await
+        .map_err(|e| format!("网络错误: {}", e))?;
+
+    if response.ok() {
+        response.json().await.map_err(|e| format!("解析失败: {}", e))
+    } else {
+        Err(format!("获取任务失败: {}", response.status()))
+    }
+}
+
+async fn create_task_api(token: &str, request: CreateTaskRequest) -> Result<Task, String> {
+    let response = Request::post(&format!("{}/api/tasks", API_BASE))
+        .header("Authorization", &format!("Bearer {}", token))
+        .json(&request)
+        .map_err(|e| format!("请求失败: {}", e))?
+        .send()
+        .await
+        .map_err(|e| format!("网络错误: {}", e))?;
+
+    if response.ok() {
+        response.json().await.map_err(|e| format!("解析失败: {}", e))
+    } else {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        Err(format!("创建任务失败 ({}): {}", status, body))
+    }
+}
+
+async fn update_task_status_api(token: &str, task_id: &str, status: TaskStatus) -> Result<Task, String> {
+    let response = Request::put(&format!("{}/api/tasks/{}/status", API_BASE, task_id))
+        .header("Authorization", &format!("Bearer {}", token))
+        .json(&UpdateTaskStatusRequest { status })
+        .map_err(|e| format!("请求失败: {}", e))?
+        .send()
+        .await
+        .map_err(|e| format!("网络错误: {}", e))?;
+
+    if response.ok() {
+        response.json().await.map_err(|e| format!("解析失败: {}", e))
+    } else {
+        Err(format!("更新任务状态失败: {}", response.status()))
+    }
+}
+
+async fn delete_task_api(token: &str, task_id: &str) -> Result<(), String> {
+    let response = Request::delete(&format!("{}/api/tasks/{}", API_BASE, task_id))
+        .header("Authorization", &format!("Bearer {}", token))
+        .send()
+        .await
+        .map_err(|e| format!("网络错误: {}", e))?;
+
+    if response.ok() {
+        Ok(())
+    } else {
+        Err(format!("删除任务失败: {}", response.status()))
+    }
+}
+
 // ===== 注册页面 =====
 
 #[component]
@@ -624,6 +1071,11 @@ fn DocumentsPage() -> impl IntoView {
 
     let (sidebar_collapsed, _set_sidebar_collapsed) = create_signal(false);
 
+    // 通知系统
+    let (notifications, set_notifications) = create_signal(Vec::<Notification>::new());
+    let (unread_count, set_unread_count) = create_signal(0);
+    let (show_notifications_panel, set_show_notifications_panel) = create_signal(false);
+
     let navigate = use_navigate();
     let nav_clone1 = navigate.clone();
 
@@ -651,12 +1103,28 @@ fn DocumentsPage() -> impl IntoView {
             });
 
             // 加载标签
+            let token_clone = token.clone();
             spawn_local(async move {
-                match fetch_tags(&token).await {
+                match fetch_tags(&token_clone).await {
                     Ok(tag_list) => set_tags.set(tag_list),
                     Err(e) => leptos::logging::error!("加载标签失败: {}", e),
                 }
                 set_loading.set(false);
+            });
+
+            // 加载通知
+            let set_notifications_clone = set_notifications.clone();
+            let set_unread_count_clone = set_unread_count.clone();
+            spawn_local(async move {
+                match fetch_notifications(&token).await {
+                    Ok(notifs) => {
+                        // 计算未读数
+                        let unread = notifs.iter().filter(|n| !n.is_read).count() as i32;
+                        set_unread_count_clone.set(unread);
+                        set_notifications_clone.set(notifs);
+                    }
+                    Err(e) => leptos::logging::error!("加载通知失败: {}", e),
+                }
             });
         } else {
             nav_clone1("/", Default::default());
@@ -719,6 +1187,79 @@ fn DocumentsPage() -> impl IntoView {
         }
     };
 
+    // ===== 通知操作 =====
+
+    // 标记通知为已读
+    let mark_notification_read_fn = move |notification_id: String| {
+        if let Some(token) = get_token() {
+            let notifications_rc = notifications.clone();
+            let set_notifications_clone = set_notifications.clone();
+            let set_unread_count_clone = set_unread_count.clone();
+            spawn_local(async move {
+                match mark_notification_read(&token, &notification_id).await {
+                    Ok(_) => {
+                        // 更新通知状态
+                        let current = notifications_rc.get();
+                        let updated: Vec<_> = current.into_iter().map(|mut n| {
+                            if n.id == notification_id {
+                                n.is_read = true;
+                            }
+                            n
+                        }).collect();
+                        // 更新未读数
+                        let unread = updated.iter().filter(|n| !n.is_read).count() as i32;
+                        set_notifications_clone.set(updated);
+                        set_unread_count_clone.set(unread);
+                    }
+                    Err(e) => set_error.set(Some(e)),
+                }
+            });
+        }
+    };
+
+    // 标记所有通知为已读
+    let mark_all_read = move |_| {
+        if let Some(token) = get_token() {
+            let notifications_rc = notifications.clone();
+            let set_notifications_clone = set_notifications.clone();
+            let set_unread_count_clone = set_unread_count.clone();
+            spawn_local(async move {
+                match mark_all_notifications_read(&token).await {
+                    Ok(_) => {
+                        let mut current = notifications_rc.get();
+                        for n in &mut current {
+                            n.is_read = true;
+                        }
+                        set_notifications_clone.set(current);
+                        set_unread_count_clone.set(0);
+                    }
+                    Err(e) => set_error.set(Some(e)),
+                }
+            });
+        }
+    };
+
+    // 删除通知
+    let delete_notification_fn = move |notification_id: String| {
+        if let Some(token) = get_token() {
+            let notifications_rc = notifications.clone();
+            let set_notifications_clone = set_notifications.clone();
+            let set_unread_count_clone = set_unread_count.clone();
+            spawn_local(async move {
+                match delete_notification(&token, &notification_id).await {
+                    Ok(_) => {
+                        let current = notifications_rc.get();
+                        let updated: Vec<_> = current.into_iter().filter(|n| n.id != notification_id).collect();
+                        let unread = updated.iter().filter(|n| !n.is_read).count() as i32;
+                        set_notifications_clone.set(updated);
+                        set_unread_count_clone.set(unread);
+                    }
+                    Err(e) => set_error.set(Some(e)),
+                }
+            });
+        }
+    };
+
     // 登出
     let nav_for_logout = navigate.clone();
     let logout = move |_| {
@@ -734,6 +1275,22 @@ fn DocumentsPage() -> impl IntoView {
                     <h1>"Entangle"</h1>
                 </div>
                 <div class="navbar-actions">
+                    <button
+                        class="btn btn-secondary"
+                        style="position: relative;"
+                        on:click=move |_| set_show_notifications_panel.set(!show_notifications_panel.get())
+                    >
+                        "🔔 通知"
+                        {move || if unread_count.get() > 0 {
+                            view! {
+                                <span style="position: absolute; top: -5px; right: -5px; background: #ef4444; color: white; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; font-size: 12px;">
+                                    {unread_count.get()}
+                                </span>
+                            }.into_view()
+                        } else {
+                            view! {}.into_view()
+                        }}
+                    </button>
                     <button class="btn btn-primary" on:click=move |_| set_show_create_doc.set(!show_create_doc.get())>
                         "+ 新建文档"
                     </button>
@@ -742,6 +1299,86 @@ fn DocumentsPage() -> impl IntoView {
                     </button>
                 </div>
             </div>
+
+            // 通知面板（浮动）
+            {move || show_notifications_panel.get().then(|| view! {
+                <div style="position: fixed; top: 70px; right: 20px; width: 350px; max-height: 500px; background: white; border: 1px solid #ddd; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); z-index: 1000;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1px solid #eee;">
+                        <h3 style="margin: 0;">"通知"</h3>
+                        <div style="display: flex; gap: 8px;">
+                            {move || if unread_count.get() > 0 {
+                                view! {
+                                    <button
+                                        class="btn-sm"
+                                        on:click=mark_all_read
+                                    >
+                                        "全部已读"
+                                    </button>
+                                }.into_view()
+                            } else {
+                                view! {}.into_view()
+                            }}
+                            <button
+                                class="btn-close"
+                                on:click=move |_| set_show_notifications_panel.set(false)
+                            >
+                                "×"
+                            </button>
+                        </div>
+                    </div>
+                    <div style="max-height: 400px; overflow-y: auto;">
+                        {move || if notifications.get().is_empty() {
+                            view! { <div style="padding: 20px; text-align: center; color: #999;">"暂无通知"</div> }.into_view()
+                        } else {
+                            view! {
+                                <For
+                                    each=move || notifications.get()
+                                    key=|notif| notif.id.clone()
+                                    children=move |notif: Notification| {
+                                        let notif_id = notif.id.clone();
+                                        let notif_id_for_delete = notif_id.clone();
+                                        let is_read = notif.is_read;
+                                        view! {
+                                            <div
+                                                style=format!("padding: 12px 16px; border-bottom: 1px solid #eee; cursor: pointer; {}",
+                                                    if is_read { "background: #f9f9f9; opacity: 0.7;" } else { "background: white;" }
+                                                )
+                                                on:click=move |_| mark_notification_read_fn(notif_id.clone())
+                                            >
+                                                <div style="display: flex; justify-content: space-between; align-items: start;">
+                                                    <div style="flex: 1;">
+                                                        <div style=format!("font-size: 14px; margin-bottom: 4px; font-weight: {};",
+                                                            if is_read { "normal" } else { "bold" }
+                                                        )>
+                                                            {&notif.title}
+                                                        </div>
+                                                        {notif.content.as_ref().map(|content| view! {
+                                                            <div style="font-size: 13px; color: #666; margin-bottom: 4px;">{content}</div>
+                                                        })}
+                                                        <div style="font-size: 12px; color: #999;">
+                                                            {notif.created_at.chars().take(16).collect::<String>()}
+                                                        </div>
+                                                    </div>
+                                                    <button
+                                                        class="btn-icon"
+                                                        style="padding: 4px;"
+                                                        on:click=move |ev| {
+                                                            ev.stop_propagation();
+                                                            delete_notification_fn(notif_id_for_delete.clone());
+                                                        }
+                                                    >
+                                                        "×"
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        }
+                                    }
+                                />
+                            }.into_view()
+                        }}
+                    </div>
+                </div>
+            })}
 
             <div class="main-layout">
                 // 侧边栏
@@ -815,13 +1452,13 @@ fn DocumentsPage() -> impl IntoView {
                         <div class="tag-list">
                             <For
                                 each=move || tags.get()
-                                key=|tag| tag.tag.id.clone()
+                                key=|tag| tag.id.clone()
                                 children=|tag_with_count: TagWithCount| {
-                                    let color = tag_with_count.tag.color.clone();
+                                    let color = tag_with_count.color.clone();
                                     view! {
                                         <div class="tag-item">
                                             <span class="tag-badge" style=format!("background-color: {}", color)>
-                                                {&tag_with_count.tag.name}
+                                                {&tag_with_count.name}
                                             </span>
                                             <span class="tag-count">{tag_with_count.document_count}</span>
                                         </div>
@@ -933,8 +1570,25 @@ fn EditorPage() -> impl IntoView {
 
     // WebSocket 和实时协作
     let (ws, set_ws) = create_signal(None::<web_sys::WebSocket>);
-    let (online_users, set_online_users) = create_signal(Vec::<(String, String)>::new()); // (user_id, nickname)
+    let (online_users, set_online_users) = create_signal(Vec::<(String, String, usize, usize)>::new()); // (user_id, nickname, line, column)
     let (ws_connected, set_ws_connected) = create_signal(false);
+
+    // 当前用户的光标位置（用于发送给其他用户）
+    let (cursor_line, set_cursor_line) = create_signal(0usize);
+    let (cursor_column, set_cursor_column) = create_signal(0usize);
+
+    // 评论系统
+    let (comments, set_comments) = create_signal(Vec::<CommentListItem>::new());
+    let (show_comments_panel, set_show_comments_panel) = create_signal(false);
+    let (new_comment_content, set_new_comment_content) = create_signal(String::new());
+
+    // 任务系统
+    let (tasks, set_tasks) = create_signal(Vec::<TaskListItem>::new());
+    let (show_tasks_panel, set_show_tasks_panel) = create_signal(false);
+    let (show_create_task, set_show_create_task) = create_signal(false);
+    let (new_task_title, set_new_task_title) = create_signal(String::new());
+    let (new_task_description, set_new_task_description) = create_signal(String::new());
+    let (new_task_priority, set_new_task_priority) = create_signal(TaskPriority::Medium);
 
     let navigate = use_navigate();
     let navigate_clone = navigate.clone();
@@ -1007,6 +1661,26 @@ fn EditorPage() -> impl IntoView {
                 }
             });
 
+            // 加载评论列表
+            let token_clone = token.clone();
+            let id_clone = id.clone();
+            let set_comments_clone = set_comments.clone();
+            spawn_local(async move {
+                match fetch_comments(&token_clone, &id_clone).await {
+                    Ok(comms) => set_comments_clone.set(comms),
+                    Err(e) => leptos::logging::error!("加载评论失败: {}", e),
+                }
+            });
+
+            // 加载任务列表
+            let token_clone = token.clone();
+            spawn_local(async move {
+                match fetch_tasks(&token_clone, "all").await {
+                    Ok(task_list) => set_tasks.set(task_list),
+                    Err(e) => leptos::logging::error!("加载任务失败: {}", e),
+                }
+            });
+
             // 建立 WebSocket 连接
             let ws_url = format!("{}/ws/documents/{}?token={}", WS_BASE, id, token);
             match web_sys::WebSocket::new(&ws_url) {
@@ -1058,15 +1732,38 @@ fn EditorPage() -> impl IntoView {
                                     WsMessage::UserJoined { user_id, nickname } => {
                                         leptos::logging::log!("用户加入: {} ({})", nickname, user_id);
                                         let mut users = online_users.get();
-                                        users.push((user_id.clone(), nickname.clone()));
+                                        users.push((user_id.clone(), nickname.clone(), 0, 0));
                                         set_online_users.set(users);
                                     }
                                     WsMessage::UserLeft { user_id } => {
                                         leptos::logging::log!("用户离开: {}", user_id);
                                         let users: Vec<_> = online_users.get()
                                             .into_iter()
-                                            .filter(|(id, _)| id != &user_id)
+                                            .filter(|(id, _, _, _)| id != &user_id)
                                             .collect();
+                                        set_online_users.set(users);
+                                    }
+                                    WsMessage::Awareness { state } => {
+                                        // 更新远程用户的光标位置
+                                        let mut users = online_users.get();
+                                        let mut found = false;
+                                        for user in &mut users {
+                                            if user.0 == state.user_id {
+                                                user.2 = state.cursor.as_ref().map(|c| c.line).unwrap_or(0);
+                                                user.3 = state.cursor.as_ref().map(|c| c.column).unwrap_or(0);
+                                                found = true;
+                                                break;
+                                            }
+                                        }
+                                        if !found {
+                                            // 新用户通过 awareness 加入
+                                            users.push((
+                                                state.user_id.clone(),
+                                                state.nickname.unwrap_or_default(),
+                                                state.cursor.as_ref().map(|c| c.line).unwrap_or(0),
+                                                state.cursor.as_ref().map(|c| c.column).unwrap_or(0),
+                                            ));
+                                        }
                                         set_online_users.set(users);
                                     }
                                     WsMessage::Error { message } => {
@@ -1175,6 +1872,177 @@ fn EditorPage() -> impl IntoView {
         }
     };
 
+    // ===== 评论操作 =====
+
+    // 创建评论
+    let create_comment = move |_| {
+        let id = doc_id();
+        if let Some(token) = get_token() {
+            let content = new_comment_content.get();
+            if content.trim().is_empty() {
+                return;
+            }
+
+            let request = CreateCommentRequest {
+                doc_id: id.clone(),
+                content,
+                parent_id: None,
+                position: None,
+            };
+
+            let set_comments_clone = set_comments.clone();
+            spawn_local(async move {
+                match create_comment_api(&token, request).await {
+                    Ok(_) => {
+                        set_new_comment_content.set(String::new());
+                        // 重新加载评论列表
+                        if let Ok(comms) = fetch_comments(&token, &id).await {
+                            set_comments_clone.set(comms);
+                        }
+                    }
+                    Err(e) => set_error.set(Some(e)),
+                }
+            });
+        }
+    };
+
+    // 标记评论为已解决
+    let resolve_comment = move |comment_id: String| {
+        let id = doc_id();
+        if let Some(token) = get_token() {
+            let set_comments_clone = set_comments.clone();
+            spawn_local(async move {
+                match resolve_comment_api(&token, &comment_id).await {
+                    Ok(_) => {
+                        if let Ok(comms) = fetch_comments(&token, &id).await {
+                            set_comments_clone.set(comms);
+                        }
+                    }
+                    Err(e) => set_error.set(Some(e)),
+                }
+            });
+        }
+    };
+
+    // 取消评论解决状态
+    let unresolve_comment = move |comment_id: String| {
+        let id = doc_id();
+        if let Some(token) = get_token() {
+            let set_comments_clone = set_comments.clone();
+            spawn_local(async move {
+                match unresolve_comment_api(&token, &comment_id).await {
+                    Ok(_) => {
+                        if let Ok(comms) = fetch_comments(&token, &id).await {
+                            set_comments_clone.set(comms);
+                        }
+                    }
+                    Err(e) => set_error.set(Some(e)),
+                }
+            });
+        }
+    };
+
+    // 删除评论
+    let delete_comment = move |comment_id: String| {
+        let id = doc_id();
+        if let Some(token) = get_token() {
+            let set_comments_clone = set_comments.clone();
+            spawn_local(async move {
+                match delete_comment_api(&token, &comment_id).await {
+                    Ok(_) => {
+                        // 从列表中移除
+                        let current_comments = comments.get();
+                        let updated = current_comments
+                            .into_iter()
+                            .filter(|c| c.id != comment_id)
+                            .collect();
+                        set_comments_clone.set(updated);
+                    }
+                    Err(e) => set_error.set(Some(e)),
+                }
+            });
+        }
+    };
+
+    // ===== 任务操作 =====
+
+    // 创建任务
+    let create_task = move |_| {
+        let id = doc_id();
+        if let Some(token) = get_token() {
+            let title = new_task_title.get();
+            if title.trim().is_empty() {
+                return;
+            }
+
+            let request = CreateTaskRequest {
+                title,
+                description: {
+                    let desc = new_task_description.get();
+                    if desc.trim().is_empty() { None } else { Some(desc) }
+                },
+                doc_id: Some(id.clone()),
+                assignee_id: None,
+                priority: new_task_priority.get(),
+                due_date: None,
+            };
+
+            let set_tasks_clone = set_tasks.clone();
+            spawn_local(async move {
+                match create_task_api(&token, request).await {
+                    Ok(_) => {
+                        set_show_create_task.set(false);
+                        set_new_task_title.set(String::new());
+                        set_new_task_description.set(String::new());
+                        // 重新加载任务列表
+                        if let Ok(task_list) = fetch_tasks(&token, "all").await {
+                            set_tasks_clone.set(task_list);
+                        }
+                    }
+                    Err(e) => set_error.set(Some(e)),
+                }
+            });
+        }
+    };
+
+    // 更新任务状态
+    let update_task_status = move |task_id: String, status: TaskStatus| {
+        if let Some(token) = get_token() {
+            let set_tasks_clone = set_tasks.clone();
+            spawn_local(async move {
+                match update_task_status_api(&token, &task_id, status).await {
+                    Ok(_) => {
+                        if let Ok(task_list) = fetch_tasks(&token, "all").await {
+                            set_tasks_clone.set(task_list);
+                        }
+                    }
+                    Err(e) => set_error.set(Some(e)),
+                }
+            });
+        }
+    };
+
+    // 删除任务
+    let delete_task_fn = move |task_id: String| {
+        if let Some(token) = get_token() {
+            let set_tasks_clone = set_tasks.clone();
+            spawn_local(async move {
+                match delete_task_api(&token, &task_id).await {
+                    Ok(_) => {
+                        // 从列表中移除
+                        let current_tasks = tasks.get();
+                        let updated = current_tasks
+                            .into_iter()
+                            .filter(|t| t.id != task_id)
+                            .collect();
+                        set_tasks_clone.set(updated);
+                    }
+                    Err(e) => set_error.set(Some(e)),
+                }
+            });
+        }
+    };
+
     // 通过 WebSocket 发送 CRDT 更新
     let sync_content = move |new_content: String| {
         if let Some(websocket) = ws.get() {
@@ -1203,6 +2071,25 @@ fn EditorPage() -> impl IntoView {
                         set_syncing.set(false);
                     }
                 }
+            }
+        }
+    };
+
+    // 发送 Awareness 状态（光标位置）
+    let send_awareness = move |line: usize, column: usize| {
+        if let Some(websocket) = ws.get() {
+            let awareness_state = AwarenessState {
+                user_id: "".to_string(), // 后端会从 token 中提取
+                nickname: None,
+                cursor: Some(CursorPosition { line, column }),
+            };
+
+            let msg = WsMessage::Awareness {
+                state: awareness_state,
+            };
+
+            if let Ok(msg_json) = serde_json::to_string(&msg) {
+                let _ = websocket.send_with_str(&msg_json);
             }
         }
     };
@@ -1251,6 +2138,18 @@ fn EditorPage() -> impl IntoView {
                     >
                         "👥 协作者 ("{move || collaborators.get().len()}")"
                     </button>
+                    <button
+                        class="btn btn-secondary"
+                        on:click=move |_| set_show_comments_panel.set(!show_comments_panel.get())
+                    >
+                        "💬 评论 ("{move || comments.get().len()}")"
+                    </button>
+                    <button
+                        class="btn btn-secondary"
+                        on:click=move |_| set_show_tasks_panel.set(!show_tasks_panel.get())
+                    >
+                        "📋 任务 ("{move || tasks.get().len()}")"
+                    </button>
                     <button class="btn" on:click=save_doc disabled=move || saving.get()>
                         {move || if saving.get() { "保存中..." } else { "💾 保存" }}
                     </button>
@@ -1272,9 +2171,37 @@ fn EditorPage() -> impl IntoView {
                             />
                             <textarea
                                 class="content-textarea"
+                                id="editor-textarea"
                                 placeholder="开始输入..."
                                 prop:value=move || content.get()
                                 on:input=on_content_change
+                                on:keyup=move |ev| {
+                                    // 计算光标位置（简化版，基于换行符计数）
+                                    use wasm_bindgen::JsCast;
+                                    if let Some(textarea) = ev.target().and_then(|t| t.dyn_into::<web_sys::HtmlTextAreaElement>().ok()) {
+                                        let text = textarea.value();
+                                        // 简化：使用文本长度作为光标位置的近似值
+                                        let position = text.chars().count();
+                                        let line = text.chars().filter(|&c| c == '\n').count() + 1;
+                                        set_cursor_line.set(line);
+                                        set_cursor_column.set(position);
+
+                                        // 发送 awareness 状态
+                                        send_awareness(line, position);
+                                    }
+                                }
+                                on:click=move |ev| {
+                                    // 点击时也更新光标位置
+                                    use wasm_bindgen::JsCast;
+                                    if let Some(textarea) = ev.target().and_then(|t| t.dyn_into::<web_sys::HtmlTextAreaElement>().ok()) {
+                                        let text = textarea.value();
+                                        let position = text.chars().count();
+                                        let line = text.chars().filter(|&c| c == '\n').count() + 1;
+                                        set_cursor_line.set(line);
+                                        set_cursor_column.set(position);
+                                        send_awareness(line, position);
+                                    }
+                                }
                             />
 
                             // 同步状态显示
@@ -1328,11 +2255,14 @@ fn EditorPage() -> impl IntoView {
                                         view! {
                                             <For
                                                 each=move || online_users.get()
-                                                key=|(id, _)| id.clone()
-                                                children=|(_, nickname): (String, String)| {
+                                                key=|(id, _, _, _)| id.clone()
+                                                children=|(id, nickname, line, column): (String, String, usize, usize)| {
                                                     view! {
                                                         <div style="font-size: 14px; padding: 4px 0; color: #10b981;">
                                                             "● "{nickname}
+                                                            <span style="color: #999; font-size: 12px;">
+                                                                "(行: "{line}", 列: "{column}")"
+                                                            </span>
                                                         </div>
                                                     }
                                                 }
@@ -1414,6 +2344,260 @@ fn EditorPage() -> impl IntoView {
                                         }
                                     }
                                 />
+                            </div>
+                        </div>
+                    </div>
+                })}
+
+                // 评论侧边栏
+                {move || show_comments_panel.get().then(|| view! {
+                    <div class="collaborators-panel">
+                        <div class="panel-header">
+                            <h3>"评论"</h3>
+                            <button
+                                class="btn-close"
+                                on:click=move |_| set_show_comments_panel.set(false)
+                            >
+                                "×"
+                            </button>
+                        </div>
+
+                        <div class="panel-content">
+                            // 创建评论表单
+                            <div style="margin-bottom: 16px;">
+                                <textarea
+                                    placeholder="写下你的评论..."
+                                    prop:value=move || new_comment_content.get()
+                                    on:input=move |ev| set_new_comment_content.set(event_target_value(&ev))
+                                    style="width: 100%; min-height: 80px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; resize: vertical;"
+                                />
+                                <button
+                                    class="btn btn-primary"
+                                    style="width: 100%; margin-top: 8px;"
+                                    on:click=create_comment
+                                >
+                                    "发布评论"
+                                </button>
+                            </div>
+
+                            // 评论列表
+                            <div class="comments-list" style="max-height: 400px; overflow-y: auto;">
+                                {move || if comments.get().is_empty() {
+                                    view! { <div style="color: #999; text-align: center; padding: 20px;">"暂无评论"</div> }.into_view()
+                                } else {
+                                    view! {
+                                        <For
+                                            each=move || comments.get()
+                                            key=|comment| comment.id.clone()
+                                            children=move |comment: CommentListItem| {
+                                                let comment_id = comment.id.clone();
+                                                let comment_id_for_resolve = comment_id.clone();
+                                                let comment_id_for_delete = comment_id.clone();
+                                                let is_resolved = comment.is_resolved;
+                                                view! {
+                                                    <div class="comment-item" style=format!("padding: 12px; border-bottom: 1px solid #eee; {}", if is_resolved { "opacity: 0.6;" } else { "" })>
+                                                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
+                                                            <div style="display: flex; align-items: center; gap: 8px;">
+                                                                <strong style="font-size: 14px;">{&comment.user.nickname}</strong>
+                                                                {is_resolved.then(|| view! {
+                                                                    <span class="badge" style="background: #10b981; color: white; padding: 2px 6px; border-radius: 4px; font-size: 11px;">"已解决"</span>
+                                                                })}
+                                                            </div>
+                                                            <span style="font-size: 12px; color: #999;">
+                                                                {comment.created_at.chars().take(16).collect::<String>()}
+                                                            </span>
+                                                        </div>
+                                                        <div style="font-size: 14px; line-height: 1.5; margin-bottom: 8px;">
+                                                            {&comment.content}
+                                                        </div>
+                                                        <div style="display: flex; gap: 8px;">
+                                                            {if is_resolved {
+                                                                view! {
+                                                                    <button
+                                                                        class="btn-sm btn-secondary"
+                                                                        on:click=move |_| unresolve_comment(comment_id_for_resolve.clone())
+                                                                    >
+                                                                        "重开"
+                                                                    </button>
+                                                                }.into_view()
+                                                            } else {
+                                                                view! {
+                                                                    <button
+                                                                        class="btn-sm btn-secondary"
+                                                                        on:click=move |_| resolve_comment(comment_id_for_resolve.clone())
+                                                                    >
+                                                                        "解决"
+                                                                    </button>
+                                                                }.into_view()
+                                                            }};
+                                                            <button
+                                                                class="btn-sm btn-danger"
+                                                                on:click=move |_| delete_comment(comment_id_for_delete.clone())
+                                                            >
+                                                                "删除"
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                }
+                                            }
+                                        />
+                                    }.into_view()
+                                }}
+                            </div>
+                        </div>
+                    </div>
+                })}
+
+                // 任务侧边栏
+                {move || show_tasks_panel.get().then(|| view! {
+                    <div class="collaborators-panel">
+                        <div class="panel-header">
+                            <h3>"任务"</h3>
+                            <button
+                                class="btn-close"
+                                on:click=move |_| set_show_tasks_panel.set(false)
+                            >
+                                "×"
+                            </button>
+                        </div>
+
+                        <div class="panel-content">
+                            // 创建任务按钮
+                            <button
+                                class="btn btn-primary"
+                                style="width: 100%; margin-bottom: 16px;"
+                                on:click=move |_| set_show_create_task.set(!show_create_task.get())
+                            >
+                                "+ 新建任务"
+                            </button>
+
+                            {move || show_create_task.get().then(|| view! {
+                                <div style="background: #f5f5f5; padding: 12px; border-radius: 4px; margin-bottom: 16px;">
+                                    <input
+                                        type="text"
+                                        placeholder="任务标题"
+                                        prop:value=move || new_task_title.get()
+                                        on:input=move |ev| set_new_task_title.set(event_target_value(&ev))
+                                        style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; margin-bottom: 8px;"
+                                    />
+                                    <textarea
+                                        placeholder="任务描述（可选）"
+                                        prop:value=move || new_task_description.get()
+                                        on:input=move |ev| set_new_task_description.set(event_target_value(&ev))
+                                        style="width: 100%; min-height: 60px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; margin-bottom: 8px; resize: vertical;"
+                                    />
+                                    <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+                                        <select
+                                            style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px;"
+                                            on:change=move |ev| {
+                                                let value = event_target_value(&ev);
+                                                let priority = match value.as_str() {
+                                                    "low" => TaskPriority::Low,
+                                                    "medium" => TaskPriority::Medium,
+                                                    "high" => TaskPriority::High,
+                                                    "urgent" => TaskPriority::Urgent,
+                                                    _ => TaskPriority::Medium,
+                                                };
+                                                set_new_task_priority.set(priority);
+                                            }
+                                        >
+                                            <option value="low">"低优先级"</option>
+                                            <option value="medium" selected>"中优先级"</option>
+                                            <option value="high">"高优先级"</option>
+                                            <option value="urgent">"紧急"</option>
+                                        </select>
+                                    </div>
+                                    <div style="display: flex; gap: 8px;">
+                                        <button
+                                            class="btn-sm"
+                                            style="flex: 1;"
+                                            on:click=create_task
+                                        >
+                                            "创建"
+                                        </button>
+                                        <button
+                                            class="btn-sm btn-cancel"
+                                            style="flex: 1;"
+                                            on:click=move |_| set_show_create_task.set(false)
+                                        >
+                                            "取消"
+                                        </button>
+                                    </div>
+                                </div>
+                            })}
+
+                            // 任务列表
+                            <div class="tasks-list" style="max-height: 400px; overflow-y: auto;">
+                                {move || if tasks.get().is_empty() {
+                                    view! { <div style="color: #999; text-align: center; padding: 20px;">"暂无任务"</div> }.into_view()
+                                } else {
+                                    view! {
+                                        <For
+                                            each=move || tasks.get()
+                                            key=|task| task.id.clone()
+                                            children=move |task: TaskListItem| {
+                                                let task_id = task.id.clone();
+                                                let task_id_for_delete = task_id.clone();
+                                                let status_str = task.status.clone();
+                                                let status_str_for_select1 = status_str.clone();
+                                                let status_str_for_select2 = status_str.clone();
+                                                let status_str_for_select3 = status_str.clone();
+                                                let status_str_for_select4 = status_str.clone();
+                                                let priority_str = task.priority.clone();
+                                                let priority_display = match priority_str.as_str() {
+                                                    "low" => TaskPriority::Low,
+                                                    "medium" => TaskPriority::Medium,
+                                                    "high" => TaskPriority::High,
+                                                    "urgent" => TaskPriority::Urgent,
+                                                    _ => TaskPriority::Medium,
+                                                };
+                                                view! {
+                                                    <div class="task-item" style=format!("padding: 12px; border-bottom: 1px solid #eee; border-left: 3px solid {};", priority_display.color())>
+                                                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 4px;">
+                                                            <strong style="font-size: 14px;">{&task.title}</strong>
+                                                            <span class="badge" style=format!("background: {}; color: white; padding: 2px 6px; border-radius: 4px; font-size: 11px;", priority_display.color())>
+                                                                {priority_display.display()}
+                                                            </span>
+                                                        </div>
+                                                        {task.doc_title.as_ref().map(|doc_title| view! {
+                                                            <div style="font-size: 12px; color: #666; margin-bottom: 4px;">"📄 "{doc_title}</div>
+                                                        })}
+                                                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                                                            <select
+                                                                class="select-sm"
+                                                                style="padding: 4px 8px; font-size: 12px; border-radius: 4px; border: 1px solid #ddd;"
+                                                                on:change=move |ev| {
+                                                                    let value = event_target_value(&ev);
+                                                                    let status = match value.as_str() {
+                                                                        "pending" => TaskStatus::Pending,
+                                                                        "in_progress" => TaskStatus::InProgress,
+                                                                        "completed" => TaskStatus::Completed,
+                                                                        "cancelled" => TaskStatus::Cancelled,
+                                                                        _ => TaskStatus::Pending,
+                                                                    };
+                                                                    update_task_status(task_id.clone(), status);
+                                                                }
+                                                            >
+                                                                <option value="pending" selected=move || status_str_for_select1 == "pending">"待处理"</option>
+                                                                <option value="in_progress" selected=move || status_str_for_select2 == "in_progress">"进行中"</option>
+                                                                <option value="completed" selected=move || status_str_for_select3 == "completed">"已完成"</option>
+                                                                <option value="cancelled" selected=move || status_str_for_select4 == "cancelled">"已取消"</option>
+                                                            </select>
+                                                            <button
+                                                                class="btn-icon btn-danger"
+                                                                on:click=move |_| delete_task_fn(task_id_for_delete.clone())
+                                                                title="删除"
+                                                                style="padding: 4px 8px;"
+                                                            >
+                                                                "×"
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                }
+                                            }
+                                        />
+                                    }.into_view()
+                                }}
                             </div>
                         </div>
                     </div>

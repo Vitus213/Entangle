@@ -7,4 +7,5 @@ pub use pool::create_pool;
 pub use repository::{
     CommentRepository, DocumentRepository, FolderRepository, NotificationRepository,
     PermissionRepository, RoleRepository, TagRepository, TaskRepository, UserRepository,
+    VersionRepository,
 };
