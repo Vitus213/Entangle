@@ -122,6 +122,30 @@ impl UserRepository {
         Ok(())
     }
 
+    /// Update user profile (nickname, avatar_url, phone)
+    pub async fn update_profile(
+        pool: &PgPool,
+        user_id: Uuid,
+        nickname: &str,
+        avatar_url: Option<&str>,
+        phone: Option<&str>,
+    ) -> Result<UserResponse, sqlx::Error> {
+        // First update the user
+        sqlx::query(
+            "UPDATE users SET nickname = $1, avatar_url = $2, phone = $3, updated_at = NOW() WHERE id = $4"
+        )
+        .bind(nickname)
+        .bind(avatar_url)
+        .bind(phone)
+        .bind(user_id)
+        .execute(pool)
+        .await?;
+
+        // Then fetch and return the updated user
+        Self::get_user_with_role(pool, user_id).await?
+            .ok_or_else(|| sqlx::Error::RowNotFound)
+    }
+
     /// List all users with pagination
     pub async fn list(
         pool: &PgPool,

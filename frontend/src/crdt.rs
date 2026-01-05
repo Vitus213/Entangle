@@ -1,5 +1,4 @@
 use yrs::{Doc, GetString, ReadTxn, StateVector, Transact, Update, Text};
-use yrs::updates::encoder::Encode;
 use yrs::updates::decoder::Decode;
 use std::rc::Rc;
 use std::cell::RefCell;

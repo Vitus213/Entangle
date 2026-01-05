@@ -1,7 +1,7 @@
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
-    routing::{get, post},
+    routing::{get, post, put},
     Json, Router,
 };
 use entangle_auth::{create_token, hash_password, verify_password, PermissionService};
@@ -32,6 +32,15 @@ pub struct PaginationQuery {
 
 fn default_limit() -> i64 {
     20
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateProfileRequest {
+    pub nickname: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub avatar_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub phone: Option<String>,
 }
 
 /// Register a new user
@@ -216,6 +225,25 @@ async fn update_user_role(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// Update current user's profile
+async fn update_my_profile(
+    State(pool): State<PgPool>,
+    user: AuthUser,
+    Json(req): Json<UpdateProfileRequest>,
+) -> AppResult<Json<UserResponse>> {
+    let updated_user = UserRepository::update_profile(
+        &pool,
+        user.user_id,
+        &req.nickname,
+        req.avatar_url.as_deref(),
+        req.phone.as_deref(),
+    )
+    .await
+    .map_err(|e| AppError::Internal(format!("Failed to update profile: {}", e)))?;
+
+    Ok(Json(updated_user))
+}
+
 /// Public routes (no authentication required)
 pub fn public_routes() -> Router<PgPool> {
     Router::new()
@@ -227,6 +255,7 @@ pub fn public_routes() -> Router<PgPool> {
 pub fn protected_routes() -> Router<PgPool> {
     Router::new()
         .route("/me", get(get_me))
+        .route("/me", put(update_my_profile))
         .route("/me/permissions", get(get_my_permissions))
         .route("/users", get(list_users))
         .route("/users/:id", get(get_user_by_id))

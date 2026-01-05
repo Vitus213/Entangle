@@ -220,6 +220,45 @@ impl DocumentRepository {
             .collect())
     }
 
+    /// 列出所有文档（管理员专用）
+    pub async fn list_all(
+        pool: &PgPool,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<DocumentListItem>, sqlx::Error> {
+        let rows = sqlx::query!(
+            r#"
+            SELECT
+                d.id, d.title, d.is_public, d.created_at, d.updated_at,
+                u.id as owner_id, u.nickname as owner_nickname, u.email as owner_email
+            FROM documents d
+            JOIN users u ON d.owner_id = u.id
+            ORDER BY d.updated_at DESC
+            LIMIT $1 OFFSET $2
+            "#,
+            limit,
+            offset
+        )
+        .fetch_all(pool)
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|row| DocumentListItem {
+                id: row.id,
+                title: row.title,
+                owner: DocumentOwner {
+                    id: row.owner_id,
+                    nickname: row.owner_nickname,
+                    email: row.owner_email,
+                },
+                is_public: row.is_public,
+                created_at: row.created_at,
+                updated_at: row.updated_at,
+            })
+            .collect())
+    }
+
     /// 列出公开文档
     pub async fn list_public(
         pool: &PgPool,

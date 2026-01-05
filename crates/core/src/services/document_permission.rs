@@ -1,3 +1,4 @@
+use entangle_auth::PermissionService;
 use entangle_db::{models::CollaboratorPermission, DocumentRepository, PermissionRepository};
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -6,12 +7,17 @@ use uuid::Uuid;
 pub struct DocumentPermissionService;
 
 impl DocumentPermissionService {
-    /// 检查用户是否可以读取文档
+    /// 检查用户是否可以读取文档（管理员可以读取所有文档）
     pub async fn can_read(
         pool: &PgPool,
         user_id: Uuid,
         doc_id: Uuid,
     ) -> Result<bool, sqlx::Error> {
+        // 管理员可以访问所有文档
+        if PermissionService::is_admin(pool, user_id).await? {
+            return Ok(true);
+        }
+
         // 1. 检查是否是文档所有者
         if let Some(doc) = DocumentRepository::find_by_id(pool, doc_id).await? {
             if doc.owner_id == user_id {
@@ -31,12 +37,17 @@ impl DocumentPermissionService {
         Ok(permission.is_some())
     }
 
-    /// 检查用户是否可以编辑文档
+    /// 检查用户是否可以编辑文档（管理员可以编辑所有文档）
     pub async fn can_write(
         pool: &PgPool,
         user_id: Uuid,
         doc_id: Uuid,
     ) -> Result<bool, sqlx::Error> {
+        // 管理员可以编辑所有文档
+        if PermissionService::is_admin(pool, user_id).await? {
+            return Ok(true);
+        }
+
         // 1. 检查是否是文档所有者
         if let Some(doc) = DocumentRepository::find_by_id(pool, doc_id).await? {
             if doc.owner_id == user_id {
@@ -54,12 +65,17 @@ impl DocumentPermissionService {
         ))
     }
 
-    /// 检查用户是否可以管理文档（添加/删除协作者、删除文档）
+    /// 检查用户是否可以管理文档（管理员可以管理所有文档）
     pub async fn can_manage(
         pool: &PgPool,
         user_id: Uuid,
         doc_id: Uuid,
     ) -> Result<bool, sqlx::Error> {
+        // 管理员可以管理所有文档
+        if PermissionService::is_admin(pool, user_id).await? {
+            return Ok(true);
+        }
+
         // 1. 检查是否是文档所有者
         if let Some(doc) = DocumentRepository::find_by_id(pool, doc_id).await? {
             if doc.owner_id == user_id {
@@ -74,12 +90,17 @@ impl DocumentPermissionService {
         Ok(matches!(permission, Some(CollaboratorPermission::Admin)))
     }
 
-    /// 检查用户是否可以删除文档（仅所有者）
+    /// 检查用户是否可以删除文档（管理员可以删除所有文档）
     pub async fn can_delete(
         pool: &PgPool,
         user_id: Uuid,
         doc_id: Uuid,
     ) -> Result<bool, sqlx::Error> {
+        // 管理员可以删除所有文档
+        if PermissionService::is_admin(pool, user_id).await? {
+            return Ok(true);
+        }
+
         if let Some(doc) = DocumentRepository::find_by_id(pool, doc_id).await? {
             Ok(doc.owner_id == user_id)
         } else {

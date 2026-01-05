@@ -4,10 +4,12 @@ use axum::{
     routing::{delete, get, post, put},
     Json, Router,
 };
+use entangle_auth::PermissionService;
 use entangle_core::{AppError, AppResult, DocumentPermissionService};
 use entangle_db::{
     models::{
-        AddCollaborator, AddCollaboratorByEmail, CreateDocument, DocumentListItem, DocumentResponse, UpdateDocument,
+        AddCollaborator, AddCollaboratorByEmail, CreateDocument, DocumentListItem,
+        DocumentResponse, UpdateDocument,
     },
     DocumentRepository,
 };
@@ -59,9 +61,7 @@ async fn create_document(
 ) -> AppResult<Json<DocumentResponse>> {
     // 检查用户是否有创建文档的权限
     if !DocumentPermissionService::has_document_permission(&pool, user.user_id, "create").await? {
-        return Err(AppError::Forbidden(
-            "需要 document:create 权限".to_string(),
-        ));
+        return Err(AppError::Forbidden("需要 document:create 权限".to_string()));
     }
 
     // 创建文档
@@ -151,9 +151,37 @@ async fn list_accessible_documents(
     user: AuthUser,
     Query(pagination): Query<PaginationQuery>,
 ) -> AppResult<Json<Vec<DocumentListItem>>> {
+    // 如果是管理员，返回所有文档
+    if PermissionService::is_admin(&pool, user.user_id).await? {
+        let documents =
+            DocumentRepository::list_all(&pool, pagination.limit, pagination.offset).await?;
+        return Ok(Json(documents));
+    }
+
+    let documents = DocumentRepository::list_accessible(
+        &pool,
+        user.user_id,
+        pagination.limit,
+        pagination.offset,
+    )
+    .await?;
+
+    Ok(Json(documents))
+}
+
+/// 列出所有文档（仅管理员）
+async fn list_all_documents(
+    State(pool): State<PgPool>,
+    user: AuthUser,
+    Query(pagination): Query<PaginationQuery>,
+) -> AppResult<Json<Vec<DocumentListItem>>> {
+    // 检查管理员权限
+    if !PermissionService::is_admin(&pool, user.user_id).await? {
+        return Err(AppError::Forbidden("需要管理员权限".to_string()));
+    }
+
     let documents =
-        DocumentRepository::list_accessible(&pool, user.user_id, pagination.limit, pagination.offset)
-            .await?;
+        DocumentRepository::list_all(&pool, pagination.limit, pagination.offset).await?;
 
     Ok(Json(documents))
 }
@@ -181,15 +209,20 @@ async fn add_collaborator(
         return Err(AppError::Forbidden("无权管理该文档协作者".to_string()));
     }
 
-    DocumentRepository::add_collaborator_by_email(&pool, doc_id, &collab_data.email, collab_data.permission)
-        .await
-        .map_err(|e| {
-            if e.to_string().contains("no rows") {
-                AppError::NotFound(format!("用户不存在: {}", collab_data.email))
-            } else {
-                AppError::Database(e)
-            }
-        })?;
+    DocumentRepository::add_collaborator_by_email(
+        &pool,
+        doc_id,
+        &collab_data.email,
+        collab_data.permission,
+    )
+    .await
+    .map_err(|e| {
+        if e.to_string().contains("no rows") {
+            AppError::NotFound(format!("用户不存在: {}", collab_data.email))
+        } else {
+            AppError::Database(e)
+        }
+    })?;
 
     Ok(StatusCode::CREATED)
 }
@@ -244,7 +277,8 @@ async fn duplicate_document(
     }
 
     // 复制文档
-    let document = DocumentRepository::duplicate(&pool, doc_id, user.user_id, dup_data.title).await?;
+    let document =
+        DocumentRepository::duplicate(&pool, doc_id, user.user_id, dup_data.title).await?;
 
     // 获取完整文档信息
     let doc_response = DocumentRepository::get_detail(&pool, document.id)
@@ -293,8 +327,9 @@ pub fn document_routes() -> Router<PgPool> {
     Router::new()
         // 文档 CRUD
         .route("/documents", post(create_document))
-        .route("/documents/search", get(search_documents))  // 必须在 :id 之前
+        .route("/documents/search", get(search_documents)) // 必须在 :id 之前
         .route("/documents/my", get(list_my_documents))
+        .route("/documents/all", get(list_all_documents)) // 管理员：查看所有文档
         .route("/documents/accessible", get(list_accessible_documents))
         .route("/documents/public", get(list_public_documents))
         .route("/documents/:id", get(get_document))

@@ -7,6 +7,7 @@ license.workspace = true
 
 [dependencies]
 entangle-db = { path = "../db" }
+entangle-auth = { path = "../auth" }
 
 axum.workspace = true
 serde.workspace = true

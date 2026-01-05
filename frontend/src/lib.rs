@@ -285,6 +285,63 @@ struct UnreadCount {
     count: i32,
 }
 
+// ===== 用户管理类型 =====
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct Role {
+    id: String,
+    name: String,
+    description: Option<String>,
+    is_system: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct ManageableUser {
+    id: String,
+    email: String,
+    nickname: String,
+    avatar_url: Option<String>,
+    role: Option<String>,
+    email_verified: bool,
+    status: String,
+    created_at: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct UpdateUserRoleRequest {
+    role_id: String,
+}
+
+// ===== 用户更新类型 =====
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct UpdateUserRequest {
+    nickname: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    avatar_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    phone: Option<String>,
+}
+
+// ===== 搜索结果类型 =====
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct SearchResult {
+    id: String,
+    title: String,
+    content: String,
+    owner: DocumentOwner,
+    is_public: bool,
+    updated_at: String,
+    highlights: Option<Vec<SearchHighlight>>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct SearchHighlight {
+    text: String,
+    position: usize,
+}
+
 // ===== 任务系统类型 =====
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -887,6 +944,140 @@ async fn delete_task_api(token: &str, task_id: &str) -> Result<(), String> {
     }
 }
 
+// ===== 用户更新 API =====
+
+async fn fetch_current_user(token: &str) -> Result<UserResponse, String> {
+    let response = Request::get(&format!("{}/api/users/me", API_BASE))
+        .header("Authorization", &format!("Bearer {}", token))
+        .send()
+        .await
+        .map_err(|e| format!("网络错误: {}", e))?;
+
+    if response.ok() {
+        response.json().await.map_err(|e| format!("解析失败: {}", e))
+    } else {
+        Err(format!("获取用户信息失败: {}", response.status()))
+    }
+}
+
+async fn update_user_api(token: &str, request: UpdateUserRequest) -> Result<UserResponse, String> {
+    let response = Request::put(&format!("{}/api/users/me", API_BASE))
+        .header("Authorization", &format!("Bearer {}", token))
+        .json(&request)
+        .map_err(|e| format!("请求失败: {}", e))?
+        .send()
+        .await
+        .map_err(|e| format!("网络错误: {}", e))?;
+
+    if response.ok() {
+        response.json().await.map_err(|e| format!("解析失败: {}", e))
+    } else {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        Err(format!("更新用户信息失败 ({}): {}", status, body))
+    }
+}
+
+async fn upload_avatar_api(token: &str, file_data: Vec<u8>, filename: &str) -> Result<String, String> {
+    let boundary = "----formdata-boundary-multipart-upload";
+
+    let mut body = Vec::new();
+    body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
+    body.extend_from_slice(format!("Content-Disposition: form-data; name=\"avatar\"; filename=\"{}\"\r\n", filename).as_bytes());
+    body.extend_from_slice(b"Content-Type: image/jpeg\r\n\r\n");
+    body.extend_from_slice(&file_data);
+    body.extend_from_slice(format!("\r\n--{}--\r\n", boundary).as_bytes());
+
+    let response = Request::post(&format!("{}/api/users/me/avatar", API_BASE))
+        .header("Authorization", &format!("Bearer {}", token))
+        .header("Content-Type", &format!("multipart/form-data; boundary={}", boundary))
+        .body(body)
+        .map_err(|e| format!("请求失败: {}", e))?
+        .send()
+        .await
+        .map_err(|e| format!("网络错误: {}", e))?;
+
+    if response.ok() {
+        #[derive(Deserialize)]
+        struct AvatarResponse {
+            avatar_url: String,
+        }
+        response.json().await.map_err(|e| format!("解析失败: {}", e)).map(|r: AvatarResponse| r.avatar_url)
+    } else {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        Err(format!("上传头像失败 ({}): {}", status, body))
+    }
+}
+
+// ===== 用户管理 API =====
+
+async fn fetch_all_users(token: &str) -> Result<Vec<ManageableUser>, String> {
+    let response = Request::get(&format!("{}/api/users?limit=100", API_BASE))
+        .header("Authorization", &format!("Bearer {}", token))
+        .send()
+        .await
+        .map_err(|e| format!("网络错误: {}", e))?;
+
+    if response.ok() {
+        response.json().await.map_err(|e| format!("解析失败: {}", e))
+    } else {
+        Err(format!("获取用户列表失败: {}", response.status()))
+    }
+}
+
+async fn fetch_all_roles(token: &str) -> Result<Vec<Role>, String> {
+    let response = Request::get(&format!("{}/api/roles", API_BASE))
+        .header("Authorization", &format!("Bearer {}", token))
+        .send()
+        .await
+        .map_err(|e| format!("网络错误: {}", e))?;
+
+    if response.ok() {
+        response.json().await.map_err(|e| format!("解析失败: {}", e))
+    } else {
+        Err(format!("获取角色列表失败: {}", response.status()))
+    }
+}
+
+async fn update_user_role_api(token: &str, user_id: &str, role_id: &str) -> Result<(), String> {
+    let request = UpdateUserRoleRequest {
+        role_id: role_id.to_string(),
+    };
+
+    let response = Request::post(&format!("{}/api/users/{}/role", API_BASE, user_id))
+        .header("Authorization", &format!("Bearer {}", token))
+        .json(&request)
+        .map_err(|e| format!("请求失败: {}", e))?
+        .send()
+        .await
+        .map_err(|e| format!("网络错误: {}", e))?;
+
+    if response.ok() {
+        Ok(())
+    } else {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        Err(format!("更新用户角色失败 ({}): {}", status, body))
+    }
+}
+
+// ===== 搜索 API =====
+
+async fn search_documents_api(token: &str, query: &str) -> Result<Vec<DocumentListItem>, String> {
+    let response = Request::get(&format!("{}/api/documents/search?q={}&limit=20", API_BASE, urlencoding::encode(query)))
+        .header("Authorization", &format!("Bearer {}", token))
+        .send()
+        .await
+        .map_err(|e| format!("网络错误: {}", e))?;
+
+    if response.ok() {
+        response.json().await.map_err(|e| format!("解析失败: {}", e))
+    } else {
+        Err(format!("搜索失败: {}", response.status()))
+    }
+}
+
 // ===== 注册页面 =====
 
 #[component]
@@ -1056,6 +1247,20 @@ fn DocumentsPage() -> impl IntoView {
     let (loading, set_loading) = create_signal(true);
     let (error, set_error) = create_signal(None::<String>);
 
+    // 当前用户信息
+    let (current_user, set_current_user) = create_signal(None::<UserResponse>);
+
+    // 用户管理功能
+    let (show_user_management, set_show_user_management) = create_signal(false);
+    let (all_users, set_all_users) = create_signal(Vec::<ManageableUser>::new());
+    let (all_roles, set_all_roles) = create_signal(Vec::<Role>::new());
+
+    // 搜索功能
+    let (search_query, set_search_query) = create_signal(String::new());
+    let (search_results, set_search_results) = create_signal(Vec::<DocumentListItem>::new());
+    let (is_searching, set_is_searching) = create_signal(false);
+    let (show_search_dropdown, set_show_search_dropdown) = create_signal(false);
+
     // 创建文档
     let (show_create_doc, set_show_create_doc) = create_signal(false);
     let (new_doc_title, set_new_doc_title) = create_signal(String::from("新文档"));
@@ -1068,6 +1273,11 @@ fn DocumentsPage() -> impl IntoView {
     let (show_create_tag, set_show_create_tag) = create_signal(false);
     let (new_tag_name, set_new_tag_name) = create_signal(String::new());
     let (new_tag_color, set_new_tag_color) = create_signal(String::from("#3B82F6"));
+
+    // 用户资料编辑
+    let (show_profile_modal, set_show_profile_modal) = create_signal(false);
+    let (edit_nickname, set_edit_nickname) = create_signal(String::new());
+    let (edit_avatar_url, set_edit_avatar_url) = create_signal(String::new());
 
     let (sidebar_collapsed, _set_sidebar_collapsed) = create_signal(false);
 
@@ -1083,6 +1293,22 @@ fn DocumentsPage() -> impl IntoView {
     create_effect(move |_| {
         if let Some(token) = get_token() {
             set_loading.set(true);
+
+            // 加载当前用户信息
+            let token_clone = token.clone();
+            let set_current_user_clone = set_current_user.clone();
+            let set_edit_nickname_clone = set_edit_nickname.clone();
+            let set_edit_avatar_url_clone = set_edit_avatar_url.clone();
+            spawn_local(async move {
+                match fetch_current_user(&token_clone).await {
+                    Ok(user) => {
+                        set_edit_nickname_clone.set(user.nickname.clone());
+                        set_edit_avatar_url_clone.set(user.avatar_url.clone().unwrap_or_default());
+                        set_current_user_clone.set(Some(user));
+                    }
+                    Err(e) => leptos::logging::error!("加载用户信息失败: {}", e),
+                }
+            });
 
             // 加载文档
             let token_clone = token.clone();
@@ -1131,9 +1357,101 @@ fn DocumentsPage() -> impl IntoView {
         }
     });
 
+    // ===== 搜索功能 =====
+
+    let perform_search = move |query: String| {
+        let query_trimmed = query.trim().to_string();
+        if query_trimmed.is_empty() {
+            set_search_results.set(Vec::new());
+            set_show_search_dropdown.set(false);
+            return;
+        }
+
+        if let Some(token) = get_token() {
+            set_is_searching.set(true);
+            let set_search_results_clone = set_search_results.clone();
+            spawn_local(async move {
+                match search_documents_api(&token, &query_trimmed).await {
+                    Ok(results) => {
+                        set_search_results_clone.set(results);
+                        set_show_search_dropdown.set(true);
+                    }
+                    Err(e) => leptos::logging::error!("搜索失败: {}", e),
+                }
+                set_is_searching.set(false);
+            });
+        }
+    };
+
+    // 防抖搜索
+    let search_debounce_timer = create_signal(None::<i32>);
+    let on_search_input = move |ev| {
+        let query = event_target_value(&ev);
+        set_search_query.set(query.clone());
+
+        // 清除之前的定时器
+        if let Some(timer_id) = search_debounce_timer.0.get() {
+            web_sys::window()
+                .unwrap()
+                .clear_timeout_with_handle(timer_id);
+        }
+
+        // 设置新的防抖定时器（300ms）
+        let perform_search_clone = perform_search.clone();
+        let callback = Closure::wrap(Box::new(move || {
+            perform_search_clone(query.clone());
+        }) as Box<dyn Fn()>);
+
+        if let Some(window) = web_sys::window() {
+            let timer_id = window
+                .set_timeout_with_callback_and_timeout_and_arguments_0(
+                    callback.as_ref().unchecked_ref(),
+                    300,
+                )
+                .unwrap();
+            search_debounce_timer.1.set(Some(timer_id));
+            callback.forget();
+        }
+    };
+
+    // ===== 用户资料更新 =====
+
+    let open_profile_modal = move |_: web_sys::MouseEvent| {
+        if let Some(user) = current_user.get() {
+            set_edit_nickname.set(user.nickname.clone());
+            set_edit_avatar_url.set(user.avatar_url.clone().unwrap_or_default());
+        }
+        set_show_profile_modal.set(true);
+    };
+
+    let update_profile = move |_: web_sys::MouseEvent| {
+        if let Some(token) = get_token() {
+            let nickname = edit_nickname.get();
+            let avatar_url = edit_avatar_url.get();
+            let avatar_url_opt = if avatar_url.is_empty() { None } else { Some(avatar_url) };
+
+            let request = UpdateUserRequest {
+                nickname,
+                avatar_url: avatar_url_opt,
+                phone: None,
+            };
+
+            let set_current_user_clone = set_current_user.clone();
+            spawn_local(async move {
+                match update_user_api(&token, request).await {
+                    Ok(updated_user) => {
+                        set_current_user_clone.set(Some(updated_user));
+                        set_show_profile_modal.set(false);
+                    }
+                    Err(e) => set_error.set(Some(e)),
+                }
+            });
+        }
+    };
+
     // 创建文档
     let nav_for_create = navigate.clone();
-    let create_document = move |_| {
+    let create_document = move |_: web_sys::MouseEvent| {
         if let Some(token) = get_token() {
             let title = new_doc_title.get();
             let nav = nav_for_create.clone();
@@ -1147,7 +1465,7 @@ fn DocumentsPage() -> impl IntoView {
     };
 
     // 创建文件夹
-    let create_folder = move |_| {
+    let create_folder = move |_: web_sys::MouseEvent| {
         if let Some(token) = get_token() {
             let name = new_folder_name.get();
             spawn_local(async move {
@@ -1167,7 +1485,7 @@ fn DocumentsPage() -> impl IntoView {
     };
 
     // 创建标签
-    let create_tag = move |_| {
+    let create_tag = move |_: web_sys::MouseEvent| {
         if let Some(token) = get_token() {
             let name = new_tag_name.get();
             let color = new_tag_color.get();
@@ -1218,7 +1536,7 @@ fn DocumentsPage() -> impl IntoView {
     };
 
     // 标记所有通知为已读
-    let mark_all_read = move |_| {
+    let mark_all_read = move |_: web_sys::MouseEvent| {
         if let Some(token) = get_token() {
             let notifications_rc = notifications.clone();
             let set_notifications_clone = set_notifications.clone();
@@ -1261,44 +1579,261 @@ fn DocumentsPage() -> impl IntoView {
     };
 
     // 登出
-    let nav_for_logout = navigate.clone();
-    let logout = move |_| {
+    let logout = move |_: web_sys::MouseEvent| {
         clear_token();
-        nav_for_logout("/", Default::default());
+        // 使用 window.location 而不是 navigate 避免 FnOnce 问题
+        if let Some(window) = web_sys::window() {
+            let _ = window.location().assign("/");
+        }
     };
 
     view! {
         <div class="app-container">
             // 顶部导航栏
-            <div class="navbar">
+            <div class="navbar" style="position: relative;">
                 <div class="navbar-brand">
                     <h1>"Entangle"</h1>
                 </div>
+
+                // 搜索框（居中）
+                <div style="position: absolute; left: 50%; transform: translateX(-50%); width: 400px; max-width: 50%;">
+                    <div style="position: relative;">
+                        <input
+                            type="text"
+                            placeholder="搜索文档..."
+                            prop:value=move || search_query.get()
+                            on:input=on_search_input
+                            on:focus=move |_| set_show_search_dropdown.set(true)
+                            style="width: 100%; padding: 8px 36px 8px 12px; border: 1px solid #E5E6EB; border-radius: 20px; font-size: 14px; background: #F5F6F7;"
+                        />
+                        <span style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: #86909C;">"🔍"</span>
+
+                        // 搜索结果下拉框
+                        <div style="position: relative;">
+                            {move || {
+                                let show = show_search_dropdown.get();
+                                let query = search_query.get();
+                                let searching = is_searching.get();
+                                let results = search_results.get();
+
+                                if !show || query.is_empty() {
+                                    view! { }.into_view()
+                                } else {
+                                    let set_show = set_show_search_dropdown.clone();
+                                    let set_q = set_search_query.clone();
+                                    let set_r = set_search_results.clone();
+
+                                    // 点击文档后导航
+                                    let handle_click = move |doc_id: String| {
+                                        let ss = set_show.clone();
+                                        let sq = set_q.clone();
+                                        let sr = set_r.clone();
+                                        move |_| {
+                                            // 使用 window.location.href 导航
+                                            if let Some(window) = web_sys::window() {
+                                                let url = format!("/editor/{}", doc_id);
+                                                let _ = window.location().assign(&url);
+                                            }
+                                            ss.set(false);
+                                            sq.set(String::new());
+                                            sr.set(Vec::new());
+                                        }
+                                    };
+
+                                    if searching {
+                                        view! {
+                                            <div style="position: absolute; top: 100%; left: 0; right: 0; margin-top: 4px; background: white; border: 1px solid #E5E6EB; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); max-height: 400px; overflow-y: auto; z-index: 1000; padding: 16px; text-align: center; color: #86909C;">
+                                                "搜索中..."
+                                            </div>
+                                        }.into_view()
+                                    } else if results.is_empty() {
+                                        view! {
+                                            <div style="position: absolute; top: 100%; left: 0; right: 0; margin-top: 4px; background: white; border: 1px solid #E5E6EB; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); max-height: 400px; overflow-y: auto; z-index: 1000; padding: 16px; text-align: center; color: #86909C;">
+                                                "未找到相关文档"
+                                            </div>
+                                        }.into_view()
+                                    } else {
+                                        view! {
+                                            <div style="position: absolute; top: 100%; left: 0; right: 0; margin-top: 4px; background: white; border: 1px solid #E5E6EB; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); max-height: 400px; overflow-y: auto; z-index: 1000;"
+                                                on:click=move |ev| ev.stop_propagation()
+                                                on:mousedown=move |ev| ev.stop_propagation()
+                                            >
+                                                {results.into_iter().map(|doc| {
+                                                    let click_handler = handle_click(doc.id.clone());
+                                                    view! {
+                                                        <div
+                                                            style="padding: 12px 16px; cursor: pointer; border-bottom: 1px solid #F2F3F5;"
+                                                            on:click=click_handler
+                                                        >
+                                                            <div style="font-weight: 500; color: #1D2129; margin-bottom: 4px;">{doc.title}</div>
+                                                            <div style="font-size: 12px; color: #86909C;">"作者: "{doc.owner.nickname}</div>
+                                                        </div>
+                                                    }
+                                                }).collect::<Vec<_>>()}
+                                            </div>
+                                        }.into_view()
+                                    }
+                                }
+                            }}
+                        </div>
+                    </div>
+                </div>
+
                 <div class="navbar-actions">
+                    // 新建按钮
+                    <button class="btn btn-primary" on:click=move |_| set_show_create_doc.set(!show_create_doc.get())>
+                        "+ 新建"
+                    </button>
+
+                    // 通知按钮
                     <button
                         class="btn btn-secondary"
                         style="position: relative;"
                         on:click=move |_| set_show_notifications_panel.set(!show_notifications_panel.get())
                     >
-                        "🔔 通知"
+                        "🔔"
                         {move || if unread_count.get() > 0 {
                             view! {
-                                <span style="position: absolute; top: -5px; right: -5px; background: #ef4444; color: white; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; font-size: 12px;">
+                                <span style="position: absolute; top: -5px; right: -5px; background: #ef4444; color: white; border-radius: 50%; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; font-size: 11px;">
                                     {unread_count.get()}
                                 </span>
-                            }.into_view()
+                            }
                         } else {
-                            view! {}.into_view()
+                            view! { <span style="display: none;"></span> }
                         }}
                     </button>
-                    <button class="btn btn-primary" on:click=move |_| set_show_create_doc.set(!show_create_doc.get())>
-                        "+ 新建文档"
-                    </button>
-                    <button class="btn btn-secondary" on:click=logout>
-                        "退出登录"
-                    </button>
+
+                    // 用户资料下拉菜单（最右边）
+                    <div style="position: relative;">
+                        <button
+                            class="btn btn-secondary"
+                            style="display: flex; align-items: center; gap: 8px;"
+                            on:click=move |_| set_show_profile_modal.set(!show_profile_modal.get())
+                        >
+                            {move || {
+                                let user_opt = current_user.get();
+                                let avatar_html = if let Some(user) = user_opt {
+                                    if let Some(ref avatar_url) = user.avatar_url {
+                                        if !avatar_url.is_empty() {
+                                            format!(r#"<img src="{}" style="width: 24px; height: 24px; border-radius: 50%;">"#, avatar_url)
+                                        } else {
+                                            r#"<span style="width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;">👤</span>"#.to_string()
+                                        }
+                                    } else {
+                                        r#"<span style="width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;">👤</span>"#.to_string()
+                                    }
+                                } else {
+                                    r#"<span style="width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;">👤</span>"#.to_string()
+                                };
+                                view! { <div inner_html={avatar_html} style="display: contents;"></div> }
+                            }}
+                            <span>{move || current_user.get().map(|u| u.nickname).unwrap_or_default()}</span>
+                            <span style="font-size: 10px;">"▼"</span>
+                        </button>
+                    </div>
                 </div>
             </div>
+
+            // 用户资料模态框
+            {move || show_profile_modal.get().then(|| view! {
+                <div
+                    style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 2000;"
+                    on:click=move |_| set_show_profile_modal.set(false)
+                >
+                    <div
+                        style="background: white; padding: 24px; border-radius: 12px; width: 400px; max-width: 90%;"
+                        on:click=move |ev| ev.stop_propagation()
+                    >
+                        <h2 style="margin: 0 0 20px 0; font-size: 18px;">"编辑个人资料"</h2>
+
+                        // 管理员入口
+                        {move || if current_user.get().as_ref().and_then(|u| u.role.as_deref()) == Some("admin") {
+                            view! {
+                                <div style="margin-bottom: 16px; padding: 12px; background: #F0F9FF; border: 1px solid #3B82F6; border-radius: 6px;">
+                                    <div style="display: flex; align-items: center; justify-content: space-between;">
+                                        <div>
+                                            <strong style="color: #1E40AF;">"管理员权限"</strong>
+                                            <div style="font-size: 12px; color: #6B7280; margin-top: 4px;">"您可以管理所有用户和文档"</div>
+                                        </div>
+                                        <button
+                                            class="btn-sm"
+                                            style="background: #3B82F6; color: white;"
+                                            on:click=move |_| {
+                                                set_show_profile_modal.set(false);
+                                                // 加载用户列表
+                                                let token = get_token().unwrap();
+                                                let set_users = set_all_users.clone();
+                                                let set_roles = set_all_roles.clone();
+                                                spawn_local(async move {
+                                                    if let Ok(users) = fetch_all_users(&token).await {
+                                                        set_users.set(users);
+                                                    }
+                                                    if let Ok(roles) = fetch_all_roles(&token).await {
+                                                        set_roles.set(roles);
+                                                    }
+                                                });
+                                                set_show_user_management.set(true);
+                                            }
+                                        >
+                                            "用户管理"
+                                        </button>
+                                    </div>
+                                </div>
+                            }
+                        } else {
+                            view! { <div style="display: none;"></div> }
+                        }}
+
+                        <div style="margin-bottom: 16px;">
+                            <label style="display: block; margin-bottom: 6px; font-size: 14px; font-weight: 500;">"昵称"</label>
+                            <input
+                                type="text"
+                                prop:value=move || edit_nickname.get()
+                                on:input=move |ev| set_edit_nickname.set(event_target_value(&ev))
+                                style="width: 100%; padding: 10px; border: 1px solid #E5E6EB; border-radius: 6px;"
+                            />
+                        </div>
+
+                        <div style="margin-bottom: 20px;">
+                            <label style="display: block; margin-bottom: 6px; font-size: 14px; font-weight: 500;">"头像 URL"</label>
+                            <input
+                                type="text"
+                                placeholder="https://example.com/avatar.jpg"
+                                prop:value=move || edit_avatar_url.get()
+                                on:input=move |ev| set_edit_avatar_url.set(event_target_value(&ev))
+                                style="width: 100%; padding: 10px; border: 1px solid #E5E6EB; border-radius: 6px;"
+                            />
+                            <div style="margin-top: 8px; display: flex; align-items: center; gap: 12px;">
+                                {move || {
+                                    let url = edit_avatar_url.get();
+                                    if url.is_empty() {
+                                        view! {
+                                            <div style="width: 48px; height: 48px; background: #F2F3F5; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 24px;">"👤"</div>
+                                        }
+                                    } else {
+                                        view! {
+                                            <div style="width: 48px; height: 48px; border-radius: 50%; overflow: hidden;">
+                                                <img src={url} alt="预览" style="width: 100%; height: 100%; object-fit: cover;" />
+                                            </div>
+                                        }
+                                    }
+                                }}
+                                <span style="font-size: 12px; color: #86909C;">"头像预览"</span>
+                            </div>
+                        </div>
+
+                        <div style="border-top: 1px solid #E5E6EB; margin-top: 16px; padding-top: 16px;">
+                            <button
+                                class="btn"
+                                style="width: 100%; text-align: left; background: none; color: #ef4444; padding: 10px; border: 1px solid #fee2e2;"
+                                on:click=logout
+                            >
+                                "🚪 登出"
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            })}
 
             // 通知面板（浮动）
             {move || show_notifications_panel.get().then(|| view! {
@@ -1378,6 +1913,90 @@ fn DocumentsPage() -> impl IntoView {
                         }}
                     </div>
                 </div>
+            })}
+
+            // 用户管理面板（仅管理员）- 使用简化方式
+            {move || show_user_management.get().then(|| {
+                let users = all_users.get();
+                let roles = all_roles.get();
+                view! {
+                    <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 3000;">
+                        <div
+                            style="background: white; padding: 24px; border-radius: 12px; width: 800px; max-width: 90%; max-height: 80vh; overflow-y: auto;"
+                            on:click=move |ev| ev.stop_propagation()
+                        >
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                                <h2 style="margin: 0;">"用户管理"</h2>
+                                <button
+                                    style="background: none; border: none; font-size: 24px; cursor: pointer;"
+                                    on:click=move |_| set_show_user_management.set(false)
+                                >
+                                    "×"
+                                </button>
+                            </div>
+
+                            <div style="overflow-x: auto;">
+                                <table style="width: 100%; border-collapse: collapse;">
+                                    <thead>
+                                        <tr style="background: #F5F6F7;">
+                                            <th style="padding: 12px; text-align: left; border-bottom: 1px solid #E5E6EB;">"用户"</th>
+                                            <th style="padding: 12px; text-align: left; border-bottom: 1px solid #E5E6EB;">"邮箱"</th>
+                                            <th style="padding: 12px; text-align: left; border-bottom: 1px solid #E5E6EB;">"角色"</th>
+                                            <th style="padding: 12px; text-align: left; border-bottom: 1px solid #E5E6EB;">"状态"</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {users.into_iter().map(|user| {
+                                            let user_id = user.id.clone();
+                                            let current_role = user.role.clone();
+                                            let roles = roles.clone();
+                                            view! {
+                                                <tr style="border-bottom: 1px solid #F2F3F5;">
+                                                    <td style="padding: 12px;">{&user.nickname}</td>
+                                                    <td style="padding: 12px; color: #666;">{&user.email}</td>
+                                                    <td style="padding: 12px;">
+                                                        <select
+                                                            style="padding: 6px 10px; border: 1px solid #E5E6EB; border-radius: 4px;"
+                                                            on:change=move |ev| {
+                                                                let new_role_id = event_target_value(&ev);
+                                                                let user_id = user_id.clone();
+                                                                let set_users = set_all_users.clone();
+                                                                spawn_local(async move {
+                                                                    if let Some(token) = get_token() {
+                                                                        match update_user_role_api(&token, &user_id, &new_role_id).await {
+                                                                            Ok(_) => {
+                                                                                if let Ok(updated_users) = fetch_all_users(&token).await {
+                                                                                    set_users.set(updated_users);
+                                                                                }
+                                                                            }
+                                                                            Err(e) => leptos::logging::error!("更新角色失败: {}", e),
+                                                                        }
+                                                                    }
+                                                                });
+                                                            }
+                                                        >
+                                                            {roles.iter().map(|role| {
+                                                                let is_selected = current_role.as_ref().map_or(false, |r| r == &role.name);
+                                                                view! {
+                                                                    <option value={role.id.clone()} selected=is_selected>
+                                                                        {&role.name}
+                                                                    </option>
+                                                                }
+                                                            }).collect_view()}
+                                                        </select>
+                                                    </td>
+                                                    <td style="padding: 12px;">
+                                                        {if user.status == "active" { "活跃" } else { "禁用" }}
+                                                    </td>
+                                                </tr>
+                                            }
+                                        }).collect_view()}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                }
             })}
 
             <div class="main-layout">
@@ -1542,6 +2161,7 @@ fn DocumentsPage() -> impl IntoView {
         </div>
     }
 }
+
 
 // ===== 编辑器页面 =====
 
@@ -1769,7 +2389,6 @@ fn EditorPage() -> impl IntoView {
                                     WsMessage::Error { message } => {
                                         set_error.set(Some(format!("WebSocket 错误: {}", message)));
                                     }
-                                    _ => {}
                                 }
                             }
                         }
@@ -1805,7 +2424,7 @@ fn EditorPage() -> impl IntoView {
         }
     });
 
-    let save_doc = move |_| {
+    let save_doc = move |_: web_sys::MouseEvent| {
         let id = doc_id();
         if let Some(token) = get_token() {
             set_saving.set(true);
@@ -1829,7 +2448,7 @@ fn EditorPage() -> impl IntoView {
     };
 
     // 添加协作者
-    let add_collaborator = move |_| {
+    let add_collaborator = move |_: web_sys::MouseEvent| {
         let id = doc_id();
         if let Some(token) = get_token() {
             let email = new_collab_email.get();
@@ -1875,7 +2494,7 @@ fn EditorPage() -> impl IntoView {
     // ===== 评论操作 =====
 
     // 创建评论
-    let create_comment = move |_| {
+    let create_comment = move |_: web_sys::MouseEvent| {
         let id = doc_id();
         if let Some(token) = get_token() {
             let content = new_comment_content.get();
@@ -1967,7 +2586,7 @@ fn EditorPage() -> impl IntoView {
     // ===== 任务操作 =====
 
     // 创建任务
-    let create_task = move |_| {
+    let create_task = move |_: web_sys::MouseEvent| {
         let id = doc_id();
         if let Some(token) = get_token() {
             let title = new_task_title.get();
@@ -2107,10 +2726,32 @@ fn EditorPage() -> impl IntoView {
                 .clear_timeout_with_handle(timer_id);
         }
 
-        // 设置新的防抖定时器（500ms）
+        // 设置新的防抖定时器（500ms）- 同时触发自动保存
+        let id = doc_id();
+        let title_val = title.get();
         let sync_fn = sync_content.clone();
+        let set_error_clone = set_error.clone();
         let callback = Closure::wrap(Box::new(move || {
+            // 同步 CRDT
             sync_fn(new_content.clone());
+
+            // 自动保存到后端
+            if let Some(token) = get_token() {
+                let title = title_val.clone();
+                let content = new_content.clone();
+                let id_clone = id.clone();
+                let set_error = set_error_clone.clone();
+                spawn_local(async move {
+                    match update_document_api(&token, &id_clone, title, content).await {
+                        Ok(_) => {
+                            leptos::logging::log!("自动保存成功");
+                        }
+                        Err(e) => {
+                            leptos::logging::error!("自动保存失败: {}", e);
+                        }
+                    }
+                });
+            }
         }) as Box<dyn Fn()>);
 
         if let Some(window) = web_sys::window() {
@@ -2125,34 +2766,176 @@ fn EditorPage() -> impl IntoView {
         }
     };
 
+    // ===== 导出功能 =====
+
+    // 导出为 Markdown - 使用简单的 data URI 方法
+    let export_markdown = move |_: web_sys::MouseEvent| {
+        let title_val = title.get();
+        let content_val = content.get();
+
+        // 创建 Markdown 内容
+        let markdown = format!("# {}\n\n{}", title_val, content_val);
+
+        // 使用 data URI 下载
+        if let Some(window) = web_sys::window() {
+            if let Some(document) = window.document() {
+                use wasm_bindgen::JsCast;
+                if let Ok(anchor) = document.create_element("a") {
+                    // URL encode the content
+                    let encoded = urlencoding::encode(&markdown);
+                    let data_url = format!("data:text/markdown;charset=utf-8,{}", encoded);
+
+                    anchor.set_attribute("href", &data_url).unwrap();
+                    anchor.set_attribute("download", &format!("{}.md", title_val)).unwrap();
+                    if let Some(html_anchor) = anchor.dyn_into::<web_sys::HtmlAnchorElement>().ok() {
+                        html_anchor.click();
+                    }
+                }
+            }
+        }
+    };
+
+    // 导出为 PDF (通过打印)
+    let export_pdf = move |_: web_sys::MouseEvent| {
+        let title_val = title.get();
+        let content_val = content.get();
+
+        // 创建一个新的窗口用于打印
+        if let Some(window) = web_sys::window() {
+            if let Ok(Some(print_window)) = window.open_with_url_and_target("", "_blank") {
+                // 使用 innerHTML 或 outerHTML 直接设置内容
+                let html = format!(
+                    r#"<!DOCTYPE html>
+                    <html>
+                    <head>
+                        <title>{}</title>
+                        <style>
+                            body {{ font-family: sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; }}
+                            h1 {{ border-bottom: 2px solid #333; }}
+                        </style>
+                    </head>
+                    <body>
+                        <h1>{}</h1>
+                        <div style="white-space: pre-wrap;">{}</div>
+                    </body>
+                    </html>"#,
+                    title_val, title_val, content_val
+                );
+
+                if let Some(print_doc) = print_window.document() {
+                    use wasm_bindgen::JsCast;
+                    // 直接设置 body 的 innerHTML
+                    if let Some(body) = print_doc.body() {
+                        let _ = body.set_outer_html(&html);
+                    }
+
+                    let callback = wasm_bindgen::closure::Closure::once(Box::new(move || {
+                        let _ = print_window.print();
+                    }) as Box<dyn Fn()>);
+                    let _ = window.set_timeout_with_callback_and_timeout_and_arguments_0(
+                        callback.as_ref().unchecked_ref(),
+                        500,
+                    );
+                    callback.forget();
+                }
+            }
+        }
+    };
+
     view! {
         <div class="editor-page">
-            <div class="editor-toolbar">
-                <button class="btn-back" on:click=move |_| navigate("/documents", Default::default())>
-                    "← 返回"
-                </button>
-                <div style="display: flex; gap: 8px;">
+            <div class="editor-toolbar" style="display: flex; justify-content: space-between; align-items: center; padding: 8px 16px;">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <button class="btn-back" on:click=move |_| navigate("/documents", Default::default())>
+                        "← 返回"
+                    </button>
+
+                    // 在线用户显示
+                    <div style="display: flex; align-items: center; gap: 4px; padding: 4px 8px; background: #F5F6F7; border-radius: 16px;">
+                        {move || if online_users.get().is_empty() {
+                            view! {
+                                <span style="font-size: 12px; color: #86909C;">
+                                    {move || if ws_connected.get() { "● 仅我" } else { "○ 离线" }}
+                                </span>
+                            }.into_view()
+                        } else {
+                            view! {
+                                <>
+                                    <span style="font-size: 12px; color: #10b981;">"●"</span>
+                                    <For
+                                        each=move || online_users.get()
+                                        key=|(id, _, _, _)| id.clone()
+                                        children=|(_, nickname, _, _): (String, String, usize, usize)| {
+                                            view! {
+                                                <span
+                                                    style="font-size: 12px; color: #4E5969; padding: 2px 6px; background: white; border-radius: 10px; margin-left: 2px;"
+                                                    title={nickname.clone()}
+                                                >
+                                                    {&nickname}
+                                                </span>
+                                            }
+                                        }
+                                    />
+                                </>
+                            }.into_view()
+                        }}
+                    </div>
+
+                    // 导出按钮
+                    <div style="display: flex; gap: 4px;">
+                        <button
+                            class="btn btn-secondary"
+                            style="padding: 6px 10px; font-size: 12px;"
+                            on:click=export_markdown
+                            title="导出为 Markdown"
+                        >
+                            "📄 MD"
+                        </button>
+                        <button
+                            class="btn btn-secondary"
+                            style="padding: 6px 10px; font-size: 12px;"
+                            on:click=export_pdf
+                            title="导出为 PDF"
+                        >
+                            "📕 PDF"
+                        </button>
+                    </div>
+                </div>
+
+                // 右侧按钮区域
+                <div style="display: flex; gap: 8px; align-items: center;">
                     <button
                         class="btn btn-secondary"
+                        style="padding: 6px 10px; font-size: 13px;"
                         on:click=move |_| set_show_collab_panel.set(!show_collab_panel.get())
                     >
-                        "👥 协作者 ("{move || collaborators.get().len()}")"
+                        "👥 "{move || collaborators.get().len()}
                     </button>
                     <button
                         class="btn btn-secondary"
+                        style="padding: 6px 10px; font-size: 13px;"
                         on:click=move |_| set_show_comments_panel.set(!show_comments_panel.get())
                     >
-                        "💬 评论 ("{move || comments.get().len()}")"
+                        "💬 "{move || comments.get().len()}
                     </button>
                     <button
                         class="btn btn-secondary"
+                        style="padding: 6px 10px; font-size: 13px;"
                         on:click=move |_| set_show_tasks_panel.set(!show_tasks_panel.get())
                     >
-                        "📋 任务 ("{move || tasks.get().len()}")"
+                        "📋 "{move || tasks.get().len()}
                     </button>
-                    <button class="btn" on:click=save_doc disabled=move || saving.get()>
-                        {move || if saving.get() { "保存中..." } else { "💾 保存" }}
-                    </button>
+
+                    // 自动保存状态指示器
+                    <div style="display: flex; align-items: center; gap: 4px; font-size: 12px; color: #86909C;">
+                        {move || if syncing.get() {
+                            view! { <span style="color: #3b82f6;">"⟳ 保存中..."</span> }.into_view()
+                        } else if last_sync_time.get().is_some() {
+                            view! { <span style="color: #10b981;">"✓ 已保存"</span> }.into_view()
+                        } else {
+                            view! { <span>"等待编辑..."</span> }.into_view()
+                        }}
+                    </div>
                 </div>
             </div>
 
@@ -2203,17 +2986,6 @@ fn EditorPage() -> impl IntoView {
                                     }
                                 }
                             />
-
-                            // 同步状态显示
-                            <div class="sync-status" style="position: fixed; bottom: 20px; right: 20px; padding: 8px 16px; background: #f0f0f0; border-radius: 4px; font-size: 14px;">
-                                {move || if syncing.get() {
-                                    view! { <span style="color: #3b82f6;">"⟳ 正在同步..."</span> }.into_view()
-                                } else if let Some(_time) = last_sync_time.get() {
-                                    view! { <span style="color: #10b981;">"✓ 已同步"</span> }.into_view()
-                                } else {
-                                    view! { <span style="color: #999;">"等待编辑..."</span> }.into_view()
-                                }}
-                            </div>
 
                             {move || error.get().map(|e| view! {
                                 <div class="message">{e}</div>
