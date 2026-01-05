@@ -12,6 +12,7 @@
 
 | 文档 | 说明 |
 |------|------|
+| [**首次安装指南**](FIRST_TIME_SETUP.md) | **第一次运行 `just dev` 的完整步骤** ⭐ 新手必读 |
 | [开发者指南](DEVELOPMENT.md) | 环境配置、编译启动、调试部署 |
 | [快速开始](QUICK_START.md) | 项目概述和快速上手 |
 | [测试指南](TESTING.md) | 测试用例和脚本使用 |
@@ -50,9 +51,10 @@ docs/
 ├── README.md              # 本文档 - 文档索引
 │
 ├── 入门指南
-│   ├── DEVELOPMENT.md     # 开发者指南（编译、调试、部署）
-│   ├── QUICK_START.md     # 快速开始
-│   └── TESTING.md         # 测试指南
+│   ├── FIRST_TIME_SETUP.md  # 首次安装指南 ⭐ 新手必读
+│   ├── DEVELOPMENT.md       # 开发者指南（编译、调试、部署）
+│   ├── QUICK_START.md       # 快速开始
+│   └── TESTING.md           # 测试指南
 │
 ├── 功能模块
 │   ├── AUTH_README.md     # 认证授权系统
@@ -107,21 +109,43 @@ docs/
 
 ## 快速启动
 
+> ⚠️ **第一次运行？** 请先阅读 [首次安装指南](FIRST_TIME_SETUP.md)，了解如何配置数据库和环境！
+
 ```bash
 # 1. 进入开发环境
 nix develop
 
-# 2. 启动数据库并运行迁移
-sqlx migrate run
+# 2. 启动数据库（首次运行需要 30-40 秒初始化）
+just db-up
 
-# 3. 启动后端 (终端1)
+# 3. 创建数据库用户（仅首次运行需要）
+docker exec -i entangle-db gsql -U gaussdb postgres << 'EOF'
+CREATE USER entangle WITH PASSWORD 'Entangle@2024' SYSID 600;
+ALTER USER entangle WITH CREATEDB CREATEROLE;
+CREATE DATABASE entangle_db OWNER entangle;
+GRANT ALL PRIVILEGES ON DATABASE entangle_db TO entangle;
+EOF
+
+# 4. 运行数据库迁移
+just migrate
+
+# 5. 启动后端 (终端1)
 cargo run --bin entangle-api
 
-# 4. 启动前端 (终端2)
+# 6. 启动前端 (终端2)
 cd frontend && trunk serve
 
-# 5. 访问应用
+# 7. 访问应用
 open http://localhost:8080
+```
+
+**一键启动（推荐）**：
+```bash
+# 终端 1：启动数据库并运行后端
+just dev
+
+# 终端 2：启动前端
+cd frontend && trunk serve
 ```
 
 ---

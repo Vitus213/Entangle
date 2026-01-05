@@ -117,42 +117,47 @@
         }
 
         .navbar {
-            height: 60px;
+            height: 48px;
             background: white;
             border-bottom: 1px solid #e5e7eb;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 0 24px;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+            padding: 0 16px;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
         }
 
         .navbar-brand h1 {
-            font-size: 24px;
+            font-size: 18px;
             color: #1a1a1a;
-            font-weight: 700;
+            font-weight: 600;
         }
 
         .navbar-actions {
             display: flex;
-            gap: 12px;
+            gap: 8px;
+            align-items: center;
         }
 
         .btn-primary {
             width: auto;
-            padding: 10px 20px;
-            background: linear-gradient(135deg, #3B82F6 0%, #2563EB 100%);
+            padding: 6px 12px;
+            background: #3370FF;
+            font-size: 13px;
         }
 
         .btn-secondary {
             width: auto;
-            padding: 10px 20px;
-            background: #f3f4f6;
-            color: #374151;
+            padding: 6px 12px;
+            background: transparent;
+            color: #4E5969;
+            border: 1px solid #E5E6EB;
+            font-size: 13px;
         }
 
         .btn-secondary:hover {
-            background: #e5e7eb;
+            background: #F2F3F5;
+            border-color: #E5E6EB;
         }
 
         .main-layout {
@@ -163,11 +168,11 @@
 
         /* ===== 侧边栏样式 ===== */
         .sidebar {
-            width: 280px;
-            background: white;
-            border-right: 1px solid #e5e7eb;
+            width: 240px;
+            background: #F5F6F7;
+            border-right: 1px solid #E5E6EB;
             overflow-y: auto;
-            transition: width 0.3s;
+            transition: width 0.2s;
         }
 
         .sidebar.collapsed {
@@ -176,23 +181,23 @@
         }
 
         .sidebar-section {
-            padding: 20px;
-            border-bottom: 1px solid #f3f4f6;
+            padding: 12px;
+            border-bottom: 1px solid #E5E6EB;
         }
 
         .section-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 16px;
+            margin-bottom: 8px;
         }
 
         .section-header h3 {
-            font-size: 14px;
+            font-size: 13px;
             font-weight: 600;
-            color: #6b7280;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
+            color: #4E5969;
+            text-transform: none;
+            letter-spacing: normal;
         }
 
         .btn-icon {
@@ -200,213 +205,215 @@
             height: 24px;
             padding: 0;
             border: none;
-            background: #f3f4f6;
+            background: transparent;
             border-radius: 4px;
             cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
             font-size: 16px;
-            color: #6b7280;
-            transition: all 0.2s;
+            color: #4E5969;
+            transition: all 0.15s;
         }
 
         .btn-icon:hover {
-            background: #e5e7eb;
-            color: #374151;
+            background: #F2F3F5;
+            color: #1D2129;
         }
 
         .create-form-inline {
-            padding: 12px;
-            background: #f9fafb;
-            border-radius: 8px;
-            margin-bottom: 12px;
+            padding: 8px;
+            background: white;
+            border-radius: 4px;
+            margin-bottom: 8px;
             display: flex;
             flex-direction: column;
-            gap: 8px;
+            gap: 6px;
         }
 
         .input-sm {
-            padding: 8px 12px;
-            border: 1px solid #e5e7eb;
-            border-radius: 6px;
-            font-size: 14px;
+            padding: 6px 10px;
+            border: 1px solid #E5E6EB;
+            border-radius: 4px;
+            font-size: 13px;
+            background: white;
         }
 
         .input-color {
-            width: 40px;
-            height: 32px;
-            border: 1px solid #e5e7eb;
-            border-radius: 6px;
+            width: 32px;
+            height: 28px;
+            border: 1px solid #E5E6EB;
+            border-radius: 4px;
             cursor: pointer;
         }
 
         .btn-sm {
             width: auto;
-            padding: 6px 12px;
-            background: #3B82F6;
+            padding: 5px 10px;
+            background: #3370FF;
             color: white;
             border: none;
-            border-radius: 6px;
-            font-size: 13px;
+            border-radius: 4px;
+            font-size: 12px;
             cursor: pointer;
             font-weight: 500;
         }
 
         .btn-cancel {
-            background: #f3f4f6;
-            color: #6b7280;
+            background: transparent;
+            color: #4E5969;
+            border: 1px solid #E5E6EB;
         }
 
         .folder-list, .tag-list {
             display: flex;
             flex-direction: column;
-            gap: 4px;
+            gap: 2px;
         }
 
         .folder-item {
-            padding: 8px 12px;
-            border-radius: 6px;
+            padding: 6px 8px;
+            border-radius: 4px;
             cursor: pointer;
             display: flex;
             align-items: center;
-            gap: 8px;
-            transition: background 0.2s;
+            gap: 6px;
+            transition: background 0.15s;
         }
 
         .folder-item:hover {
-            background: #f9fafb;
+            background: #E5E6EB;
         }
 
         .folder-icon {
-            font-size: 16px;
+            font-size: 14px;
         }
 
         .folder-name {
-            font-size: 14px;
-            color: #374151;
+            font-size: 13px;
+            color: #1D2129;
         }
 
         .tag-item {
-            padding: 6px 12px;
-            border-radius: 6px;
+            padding: 4px 8px;
+            border-radius: 4px;
             cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: space-between;
-            transition: background 0.2s;
+            transition: background 0.15s;
         }
 
         .tag-item:hover {
-            background: #f9fafb;
+            background: #E5E6EB;
         }
 
         .tag-badge {
-            padding: 4px 12px;
-            border-radius: 12px;
+            padding: 3px 8px;
+            border-radius: 4px;
             font-size: 12px;
             color: white;
             font-weight: 500;
         }
 
         .tag-count {
-            font-size: 12px;
-            color: #9ca3af;
-            background: #f3f4f6;
-            padding: 2px 8px;
-            border-radius: 10px;
+            font-size: 11px;
+            color: #86909C;
+            background: #F2F3F5;
+            padding: 2px 6px;
+            border-radius: 8px;
         }
 
         /* ===== 主内容区 ===== */
         .content-area {
             flex: 1;
-            padding: 32px;
+            padding: 16px 20px;
             overflow-y: auto;
-            background: #f5f7fa;
+            background: #F5F6F7;
         }
 
         .create-doc-form {
             background: white;
-            padding: 32px;
-            border-radius: 12px;
-            margin-bottom: 24px;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+            padding: 16px 20px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
         }
 
         .create-doc-form h2 {
-            margin-bottom: 20px;
-            color: #1a1a1a;
-            font-size: 20px;
+            margin-bottom: 12px;
+            color: #1D2129;
+            font-size: 16px;
         }
 
         .input-lg {
             width: 100%;
-            padding: 14px 18px;
-            border: 1.5px solid #e5e7eb;
-            border-radius: 8px;
-            font-size: 16px;
-            margin-bottom: 16px;
+            padding: 8px 12px;
+            border: 1px solid #E5E6EB;
+            border-radius: 4px;
+            font-size: 14px;
+            margin-bottom: 12px;
         }
 
         .form-actions {
             display: flex;
-            gap: 12px;
+            gap: 8px;
         }
 
         .documents-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-            gap: 20px;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 12px;
         }
 
         .document-card {
             background: white;
-            padding: 24px;
-            border-radius: 12px;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+            padding: 16px;
+            border-radius: 8px;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
             cursor: pointer;
-            transition: all 0.2s;
-            border: 1px solid #e5e7eb;
+            transition: all 0.15s;
+            border: 1px solid #E5E6EB;
         }
 
         .document-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
-            border-color: #3B82F6;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+            border-color: #3370FF;
         }
 
         .card-header {
             display: flex;
             justify-content: space-between;
             align-items: start;
-            margin-bottom: 12px;
+            margin-bottom: 8px;
         }
 
         .card-header h3 {
-            font-size: 18px;
-            color: #1a1a1a;
+            font-size: 15px;
+            color: #1D2129;
             font-weight: 600;
             margin: 0;
         }
 
         .badge {
-            padding: 4px 10px;
-            border-radius: 12px;
+            padding: 2px 8px;
+            border-radius: 4px;
             font-size: 11px;
-            font-weight: 600;
-            text-transform: uppercase;
+            font-weight: 500;
+            text-transform: none;
         }
 
         .badge-public {
-            background: #dbeafe;
-            color: #1e40af;
+            background: #E8F3FF;
+            color: #3370FF;
         }
 
         .card-preview {
-            color: #6b7280;
-            font-size: 14px;
-            line-height: 1.6;
-            margin-bottom: 16px;
+            color: #86909C;
+            font-size: 13px;
+            line-height: 1.5;
+            margin-bottom: 12px;
             overflow: hidden;
             text-overflow: ellipsis;
             display: -webkit-box;
@@ -417,10 +424,10 @@
         .card-meta {
             display: flex;
             justify-content: space-between;
-            font-size: 12px;
-            color: #9ca3af;
-            padding-top: 12px;
-            border-top: 1px solid #f3f4f6;
+            font-size: 11px;
+            color: #86909C;
+            padding-top: 8px;
+            border-top: 1px solid #F2F3F5;
         }
 
         /* ===== 编辑器页面 ===== */
@@ -432,27 +439,38 @@
         }
 
         .editor-toolbar {
-            padding: 16px 24px;
+            padding: 8px 16px;
             background: white;
-            border-bottom: 1px solid #e5e7eb;
+            border-bottom: 1px solid #E5E6EB;
             display: flex;
-            gap: 12px;
+            gap: 8px;
             align-items: center;
         }
 
         .btn-back {
-            padding: 8px 16px;
-            background: #f3f4f6;
-            color: #374151;
-            border: none;
-            border-radius: 6px;
+            padding: 5px 10px;
+            background: transparent;
+            color: #4E5969;
+            border: 1px solid #E5E6EB;
+            border-radius: 4px;
             cursor: pointer;
             font-weight: 500;
+            font-size: 13px;
+        }
+
+        .btn-back:hover {
+            background: #F2F3F5;
+        }
+
+        .editor-layout {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
         }
 
         .editor-content {
             flex: 1;
-            padding: 32px;
+            padding: 20px 24px;
             max-width: 900px;
             margin: 0 auto;
             width: 100%;
@@ -462,62 +480,225 @@
 
         .title-input {
             width: 100%;
-            padding: 16px 0;
+            padding: 8px 0;
             border: none;
-            font-size: 32px;
-            font-weight: 700;
+            font-size: 24px;
+            font-weight: 600;
             outline: none;
-            margin-bottom: 20px;
+            margin-bottom: 16px;
+            color: #1D2129;
         }
 
         .content-textarea {
             width: 100%;
             flex: 1;
-            padding: 16px;
-            border: 1px solid #e5e7eb;
-            border-radius: 8px;
-            font-family: 'Monaco', 'Courier New', monospace;
-            font-size: 15px;
-            line-height: 1.7;
+            padding: 12px;
+            border: 1px solid #E5E6EB;
+            border-radius: 4px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            font-size: 14px;
+            line-height: 1.6;
             resize: none;
             outline: none;
+            color: #1D2129;
         }
 
         .content-textarea:focus {
-            border-color: #3B82F6;
-            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+            border-color: #3370FF;
+            box-shadow: 0 0 0 2px rgba(51, 112, 255, 0.1);
+        }
+
+        /* ===== 编辑器侧边栏 ===== */
+        .collaborators-panel {
+            width: 280px;
+            background: white;
+            border-left: 1px solid #E5E6EB;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .panel-header {
+            padding: 12px 16px;
+            border-bottom: 1px solid #E5E6EB;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #F5F6F7;
+        }
+
+        .panel-header h3 {
+            font-size: 14px;
+            font-weight: 600;
+            color: #1D2129;
+            margin: 0;
+        }
+
+        .btn-close {
+            width: 24px;
+            height: 24px;
+            padding: 0;
+            border: none;
+            background: transparent;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 18px;
+            color: #86909C;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .btn-close:hover {
+            background: #E5E6EB;
+            color: #1D2129;
+        }
+
+        .panel-content {
+            flex: 1;
+            padding: 12px;
+            overflow-y: auto;
+        }
+
+        .collaborator-item {
+            padding: 10px;
+            border: 1px solid #E5E6EB;
+            border-radius: 4px;
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .collab-info {
+            flex: 1;
+        }
+
+        .collab-name {
+            font-size: 13px;
+            font-weight: 500;
+            color: #1D2129;
+            margin-bottom: 2px;
+        }
+
+        .collab-email {
+            font-size: 11px;
+            color: #86909C;
+        }
+
+        .collab-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .collab-permission {
+            font-size: 11px;
+            padding: 2px 6px;
+            background: #F2F3F5;
+            color: #4E5969;
+            border-radius: 4px;
+        }
+
+        .btn-danger {
+            color: #F54A45;
+        }
+
+        .btn-danger:hover {
+            background: #FDECEE;
+            color: #F54A45;
+        }
+
+        .add-collab-form {
+            padding: 12px;
+            background: #F5F6F7;
+            border-radius: 4px;
+            margin-bottom: 12px;
+        }
+
+        .select-sm {
+            width: 100%;
+            padding: 6px 10px;
+            border: 1px solid #E5E6EB;
+            border-radius: 4px;
+            font-size: 13px;
+            background: white;
+            margin-bottom: 8px;
         }
 
         /* ===== 通用样式 ===== */
         .error {
-            color: #EF4444;
-            background: #FEE2E2;
-            padding: 12px 16px;
-            border-radius: 8px;
-            font-size: 14px;
-            margin: 12px 0;
-            border-left: 3px solid #EF4444;
+            color: #F54A45;
+            background: #FDECEE;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 13px;
+            margin: 8px 0;
+            border-left: 3px solid #F54A45;
         }
 
         .loading {
             text-align: center;
-            padding: 60px;
-            color: #9ca3af;
-            font-size: 16px;
+            padding: 40px;
+            color: #86909C;
+            font-size: 14px;
         }
 
         .empty {
             text-align: center;
-            padding: 60px;
-            color: #9ca3af;
-            font-size: 16px;
+            padding: 40px;
+            color: #86909C;
+            font-size: 14px;
         }
 
         .message {
-            padding: 12px 16px;
-            border-radius: 8px;
-            font-size: 14px;
-            margin: 12px 0;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 13px;
+            margin: 8px 0;
+        }
+
+        .sync-status {
+            font-size: 12px;
+        }
+
+        /* ===== 评论列表样式 ===== */
+        .comment-item {
+            background: white;
+            border-radius: 4px;
+            margin-bottom: 8px;
+            border: 1px solid #E5E6EB;
+        }
+
+        /* ===== 任务列表样式 ===== */
+        .task-item {
+            background: white;
+            border-radius: 4px;
+            margin-bottom: 8px;
+        }
+
+        .online-users {
+            font-size: 12px;
+        }
+
+        /* ===== 登录/注册表单样式 ===== */
+        .form-group input:focus {
+            border-color: #3370FF;
+            box-shadow: 0 0 0 2px rgba(51, 112, 255, 0.1);
+        }
+
+        .btn {
+            background: #3370FF;
+        }
+
+        .btn:hover {
+            background: #2966E9;
+            box-shadow: 0 2px 6px rgba(51, 112, 255, 0.2);
+        }
+
+        /* ===== 选择器样式 ===== */
+        select {
+            cursor: pointer;
         }
     </style>
 </head>

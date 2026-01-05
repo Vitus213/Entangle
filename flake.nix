@@ -42,7 +42,7 @@
           APP_HOST = "127.0.0.1";
 
           # Database
-          DATABASE_URL = "postgres://omm:Entangle@2024@localhost:5432/postgres";
+          DATABASE_URL = "postgres://entangle:Entangle@2024@localhost:5432/entangle_db";
           DATABASE_MAX_CONNECTIONS = "10";
 
           # Redis
@@ -83,6 +83,10 @@
           buildInputs = with pkgs; [
             # Rust toolchain with wasm32 target
             rustToolchainWithWasm
+
+            # C compiler for building native dependencies
+            gcc
+            gnumake
 
             # Build dependencies
             pkg-config
