@@ -281,11 +281,17 @@ cargo run
 
 ## 文档
 
+### 答辩相关
+- [答辩指南](docs/DEFENSE_GUIDE.md) - **答辩专用！代码导读、常见问题、演示流程**
+- [API 接口文档](docs/API_REFERENCE.md) - RESTful API 和 WebSocket 完整说明
+- [数据库设计文档](docs/DATABASE_DESIGN.md) - 表结构、ER 图、索引设计
+
 ### 项目规划
 - [项目计划](docs/PROJECT_PLAN.md) - 完整的系统设计和开发计划
 - [开发进度](docs/PROGRESS.md) - 当前开发状态
 
 ### 后端文档
+- [架构文档](docs/ARCHITECTURE.md) - 完整的技术架构说明
 - [认证系统](docs/AUTH_README.md) - RBAC 权限管理
 - [文件夹设计](docs/FOLDER_DESIGN.md) - 文件夹系统架构
 - [标签设计](docs/TAG_DESIGN.md) - 标签系统架构

@@ -4,6 +4,7 @@ use axum::{
     routing::{get, post, put},
     Json, Router,
 };
+use axum_extra::extract::Multipart;
 use entangle_auth::{create_token, hash_password, verify_password, PermissionService};
 use entangle_core::{AppError, AppResult};
 use entangle_db::{
@@ -244,6 +245,106 @@ async fn update_my_profile(
     Ok(Json(updated_user))
 }
 
+#[derive(Debug, Serialize)]
+pub struct AvatarUploadResponse {
+    pub avatar_url: String,
+}
+
+/// Upload avatar image
+/// 支持上传图片并保存到本地或返回 base64 URL
+async fn upload_avatar(
+    State(pool): State<PgPool>,
+    user: AuthUser,
+    mut multipart: Multipart,
+) -> AppResult<Json<AvatarUploadResponse>> {
+    while let Some(field) = multipart.next_field().await
+        .map_err(|e| AppError::Internal(format!("Failed to read multipart: {}", e)))?
+    {
+        let name = field.name().unwrap_or("unknown");
+        if name == "avatar" {
+            let filename = field.file_name()
+                .unwrap_or("avatar.jpg")
+                .to_string();
+
+            // 获取文件扩展名
+            let extension = filename
+                .rsplit('.')
+                .next()
+                .unwrap_or("jpg");
+
+            // 验证文件类型
+            if !["jpg", "jpeg", "png", "gif", "webp"].contains(&extension.to_lowercase().as_str()) {
+                return Err(AppError::BadRequest(
+                    "Invalid file type. Only JPG, PNG, GIF, WebP are supported.".to_string()
+                ));
+            }
+
+            // 读取文件数据
+            let data = field.bytes().await
+                .map_err(|e| AppError::Internal(format!("Failed to read file: {}", e)))?;
+
+            // 验证文件大小 (最大 5MB)
+            if data.len() > 5 * 1024 * 1024 {
+                return Err(AppError::BadRequest(
+                    "File too large. Maximum size is 5MB.".to_string()
+                ));
+            }
+
+            // 简单的图片验证（检查文件头）
+            if data.len() < 4 {
+                return Err(AppError::BadRequest("Invalid image file".to_string()));
+            }
+
+            let is_valid_image = match extension.to_lowercase().as_str() {
+                "jpg" | "jpeg" => data.starts_with(&[0xFF, 0xD8, 0xFF]),
+                "png" => data.starts_with(&[0x89, 0x50, 0x4E, 0x47]),
+                "gif" => data.starts_with(&[0x47, 0x49, 0x46, 0x38]),
+                "webp" => data.starts_with(&[0x52, 0x49, 0x46, 0x46]) && data[8..12].starts_with(b"WEBP"),
+                _ => false,
+            };
+
+            if !is_valid_image {
+                return Err(AppError::BadRequest("Invalid image file format".to_string()));
+            }
+
+            // 转换为 base64 data URL
+            let mime_type = match extension.to_lowercase().as_str() {
+                "jpg" | "jpeg" => "image/jpeg",
+                "png" => "image/png",
+                "gif" => "image/gif",
+                "webp" => "image/webp",
+                _ => "image/jpeg",
+            };
+
+            let base64_data = base64::encode(&data);
+            let avatar_url = format!("data:{};base64,{}", mime_type, base64_data);
+
+            // 获取当前用户信息
+            let current_user = UserRepository::find_by_id(&pool, user.user_id)
+                .await
+                .map_err(|e| AppError::Internal(format!("Failed to fetch user: {}", e)))?
+                .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
+
+            // 更新用户头像（保持昵称不变）
+            let updated_user = UserRepository::update_profile(
+                &pool,
+                user.user_id,
+                &current_user.nickname, // 保持当前昵称
+                Some(&avatar_url),
+                None, // 不更新电话
+            )
+            .await
+            .map_err(|e| AppError::Internal(format!("Failed to update avatar: {}", e)))?;
+
+            return Ok(Json(AvatarUploadResponse {
+                avatar_url: updated_user.avatar_url.unwrap_or_default(),
+            }));
+        }
+    }
+
+    Err(AppError::BadRequest("No avatar file provided".to_string()))
+}
+
 /// Public routes (no authentication required)
 pub fn public_routes() -> Router<PgPool> {
     Router::new()
@@ -257,6 +358,7 @@ pub fn protected_routes() -> Router<PgPool> {
         .route("/me", get(get_me))
         .route("/me", put(update_my_profile))
         .route("/me/permissions", get(get_my_permissions))
+        .route("/me/avatar", post(upload_avatar))
         .route("/users", get(list_users))
         .route("/users/:id", get(get_user_by_id))
         .route("/users/:id/role", post(update_user_role))

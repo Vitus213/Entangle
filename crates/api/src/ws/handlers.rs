@@ -90,9 +90,6 @@ async fn handle_socket(socket: WebSocket, doc_id: Uuid, user_id: Uuid, hub: WsHu
     // 订阅房间广播
     let mut broadcast_rx = room.subscribe();
 
-    // 用户加入房间
-    room.user_join(user_id);
-
     // 获取用户名（用于日志和通知）
     let user_nickname = if let Some(pool) = hub.pool() {
         sqlx::query_scalar::<_, String>("SELECT nickname FROM users WHERE id = $1")
@@ -107,6 +104,9 @@ async fn handle_socket(socket: WebSocket, doc_id: Uuid, user_id: Uuid, hub: WsHu
 
     let display_name = user_nickname.as_deref().unwrap_or("Unknown");
     tracing::info!("User {} ({}) joined document {}", user_id, display_name, doc_id);
+
+    // 用户加入房间
+    room.user_join(user_id, display_name.to_string());
 
     // 发送当前文档状态（方案一：发送文本内容）
     let text_content = room.get_text_content();
@@ -300,7 +300,7 @@ fn should_forward(msg: &BroadcastMessage, current_user: Uuid) -> bool {
         BroadcastMessage::DocUpdate { from_user, .. } => *from_user != current_user,
         BroadcastMessage::TextUpdate { from_user, .. } => *from_user != current_user,
         BroadcastMessage::AwarenessUpdate { user_id, .. } => *user_id != current_user,
-        BroadcastMessage::UserJoined { user_id } => *user_id != current_user,
+        BroadcastMessage::UserJoined { user_id, .. } => *user_id != current_user,
         BroadcastMessage::UserLeft { user_id } => *user_id != current_user,
     }
 }
@@ -321,9 +321,7 @@ fn broadcast_to_ws_message(msg: BroadcastMessage) -> Option<WsMessage> {
         BroadcastMessage::AwarenessUpdate { state, .. } => {
             Some(WsMessage::Awareness { state })
         }
-        BroadcastMessage::UserJoined { user_id } => {
-            // 从 awareness 状态中获取用户昵称
-            let nickname = format!("User {}", user_id); // 简化版，可以从 awareness 获取
+        BroadcastMessage::UserJoined { user_id, nickname } => {
             Some(WsMessage::UserJoined {
                 user_id,
                 nickname,

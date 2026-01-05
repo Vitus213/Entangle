@@ -95,8 +95,15 @@ struct Folder {
     id: String,
     name: String,
     parent_id: Option<String>,
-    owner_id: String,
+    owner: FolderOwner,
     created_at: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct FolderOwner {
+    id: String,
+    nickname: String,
+    email: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -474,15 +481,29 @@ enum WsMessage {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct AwarenessState {
-    user_id: String,
-    nickname: Option<String>,
+    user: UserInfo,
     cursor: Option<CursorPosition>,
+    selection: Option<Selection>,
+    color: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct UserInfo {
+    user_id: String,
+    nickname: String,
+    avatar_url: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct CursorPosition {
-    line: usize,
-    column: usize,
+    line: u32,
+    column: u32,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct Selection {
+    start: CursorPosition,
+    end: CursorPosition,
 }
 
 // ===== LocalStorage 辅助函数 =====
@@ -560,14 +581,14 @@ async fn fetch_documents(token: &str) -> Result<Vec<DocumentListItem>, String> {
     }
 }
 
-async fn create_document_api(token: &str, title: String) -> Result<Document, String> {
+async fn create_document_api(token: &str, title: String, folder_id: Option<String>) -> Result<Document, String> {
     let response = Request::post(&format!("{}/api/documents", API_BASE))
         .header("Authorization", &format!("Bearer {}", token))
         .json(&CreateDocumentRequest {
             title,
             content: String::new(),
             is_public: false,
-            folder_id: None,
+            folder_id,
         })
         .map_err(|e| format!("请求失败: {}", e))?
         .send()
@@ -670,6 +691,25 @@ async fn create_tag_api(token: &str, name: String, color: String) -> Result<TagW
         response.json().await.map_err(|e| format!("解析失败: {}", e))
     } else {
         Err(format!("创建标签失败: {}", response.status()))
+    }
+}
+
+// 设置文档标签
+async fn set_document_tags(token: &str, doc_id: &str, tag_ids: Vec<String>) -> Result<(), String> {
+    let response = Request::put(&format!("{}/api/documents/{}/tags", API_BASE, doc_id))
+        .header("Authorization", &format!("Bearer {}", token))
+        .json(&serde_json::json!({ "tag_ids": tag_ids }))
+        .map_err(|e| format!("请求失败: {}", e))?
+        .send()
+        .await
+        .map_err(|e| format!("网络错误: {}", e))?;
+
+    if response.ok() {
+        Ok(())
+    } else {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        Err(format!("设置标签失败 ({}): {}", status, body))
     }
 }
 
@@ -1085,7 +1125,7 @@ fn RegisterPage() -> impl IntoView {
     let (email, set_email) = create_signal(String::new());
     let (password, set_password) = create_signal(String::new());
     let (nickname, set_nickname) = create_signal(String::new());
-    let (error, set_error) = create_signal(None::<String>);
+    let (error, set_error) = create_signal::<Option<String>>(None);
     let (loading, set_loading) = create_signal(false);
 
     let navigate = use_navigate();
@@ -1170,7 +1210,7 @@ fn RegisterPage() -> impl IntoView {
 fn LoginPage() -> impl IntoView {
     let (email, set_email) = create_signal(String::from("demo@example.com"));
     let (password, set_password) = create_signal(String::from("demo123"));
-    let (error, set_error) = create_signal(None::<String>);
+    let (error, set_error) = create_signal::<Option<String>>(None);
     let (loading, set_loading) = create_signal(false);
 
     let navigate = use_navigate();
@@ -1245,7 +1285,7 @@ fn DocumentsPage() -> impl IntoView {
     let (folders, set_folders) = create_signal(Vec::<FolderTree>::new());
     let (tags, set_tags) = create_signal(Vec::<TagWithCount>::new());
     let (loading, set_loading) = create_signal(true);
-    let (error, set_error) = create_signal(None::<String>);
+    let (error, set_error) = create_signal::<Option<String>>(None);
 
     // 当前用户信息
     let (current_user, set_current_user) = create_signal(None::<UserResponse>);
@@ -1264,6 +1304,8 @@ fn DocumentsPage() -> impl IntoView {
     // 创建文档
     let (show_create_doc, set_show_create_doc) = create_signal(false);
     let (new_doc_title, set_new_doc_title) = create_signal(String::from("新文档"));
+    let (new_doc_folder_id, set_new_doc_folder_id) = create_signal::<Option<String>>(None);
+    let (new_doc_tag_ids, set_new_doc_tag_ids) = create_signal::<Vec<String>>(Vec::new());
 
     // 创建文件夹
     let (show_create_folder, set_show_create_folder) = create_signal(false);
@@ -1278,6 +1320,7 @@ fn DocumentsPage() -> impl IntoView {
     let (show_profile_modal, set_show_profile_modal) = create_signal(false);
     let (edit_nickname, set_edit_nickname) = create_signal(String::new());
     let (edit_avatar_url, set_edit_avatar_url) = create_signal(String::new());
+    let (avatar_uploading, set_avatar_uploading) = create_signal(false);
 
     let (sidebar_collapsed, _set_sidebar_collapsed) = create_signal(false);
 
@@ -1449,16 +1492,107 @@ fn DocumentsPage() -> impl IntoView {
         }
     };
 
+    // 头像上传处理
+    let upload_avatar = move |ev: leptos::ev::Event| {
+        use wasm_bindgen::JsCast;
+        use wasm_bindgen_futures::JsFuture;
+
+        if let Some(input) = ev.target() {
+            if let Some(file_input) = input.dyn_into::<web_sys::HtmlInputElement>().ok() {
+                if let Some(files) = file_input.files() {
+                    if files.length() > 0 {
+                        if let Some(file) = files.get(0) {
+                            let file = file.dyn_into::<web_sys::File>().ok();
+                            if let Some(file) = file {
+                                let set_uploading = set_avatar_uploading.clone();
+                                let set_avatar_url = set_edit_avatar_url.clone();
+                                let current_user_clone = current_user.clone();
+                                let set_current_user_write = set_current_user.clone();
+                                let set_error_clone = set_error.clone();
+
+                                set_uploading.set(true);
+
+                                spawn_local(async move {
+                                    // 读取文件为 ArrayBuffer
+                                    let array_buffer = match JsFuture::from(file.array_buffer()).await {
+                                        Ok(ab) => ab,
+                                        Err(e) => {
+                                            set_error_clone.set(Some(format!("读取文件失败: {:?}", e)));
+                                            set_uploading.set(false);
+                                            return;
+                                        }
+                                    };
+
+                                    let u8_array = js_sys::Uint8Array::new(&array_buffer);
+                                    let mut file_data = Vec::new();
+                                    for i in 0..u8_array.length() {
+                                        file_data.push(u8_array.get_index(i));
+                                    }
+
+                                    let filename = file.name();
+
+                                    if let Some(token) = get_token() {
+                                        match upload_avatar_api(&token, file_data, &filename).await {
+                                            Ok(avatar_url) => {
+                                                set_avatar_url.set(avatar_url.clone());
+                                                // 更新当前用户信息
+                                                if let Some(user) = current_user_clone.get() {
+                                                    let mut updated_user = user.clone();
+                                                    updated_user.avatar_url = Some(avatar_url);
+                                                    set_current_user_write.set(Some(updated_user));
+                                                }
+                                                set_uploading.set(false);
+                                            }
+                                            Err(e) => {
+                                                set_error_clone.set(Some(format!("上传失败: {}", e)));
+                                                set_uploading.set(false);
+                                            }
+                                        }
+                                    }
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    };
+
     // 创建文档
     let nav_for_create = navigate.clone();
     let create_document = move |_: web_sys::MouseEvent| {
         if let Some(token) = get_token() {
             let title = new_doc_title.get();
+            let folder_id = new_doc_folder_id.get();
+            let tag_ids = new_doc_tag_ids.get();
             let nav = nav_for_create.clone();
+            let set_error_clone = set_error.clone();
+            let set_show_doc_clone = set_show_create_doc.clone();
+            let set_folder_clone = set_new_doc_folder_id.clone();
+            let set_tags_clone = set_new_doc_tag_ids.clone();
             spawn_local(async move {
-                match create_document_api(&token, title).await {
-                    Ok(doc) => nav(&format!("/editor/{}", doc.id), Default::default()),
-                    Err(e) => set_error.set(Some(e)),
+                match create_document_api(&token, title, folder_id).await {
+                    Ok(doc) => {
+                        // 设置标签
+                        if !tag_ids.is_empty() {
+                            if let Err(e) = set_document_tags(&token, &doc.id, tag_ids).await {
+                                set_error_clone.set(Some(format!("设置标签失败: {}", e)));
+                            } else {
+                                // 重置表单
+                                set_show_doc_clone.set(false);
+                                set_folder_clone.set(None);
+                                set_tags_clone.set(Vec::new());
+                                nav(&format!("/editor/{}", doc.id), Default::default());
+                            }
+                        } else {
+                            // 重置表单
+                            set_show_doc_clone.set(false);
+                            set_folder_clone.set(None);
+                            set_tags_clone.set(Vec::new());
+                            nav(&format!("/editor/{}", doc.id), Default::default());
+                        }
+                    }
+                    Err(e) => set_error_clone.set(Some(e)),
                 }
             });
         }
@@ -1681,7 +1815,12 @@ fn DocumentsPage() -> impl IntoView {
 
                 <div class="navbar-actions">
                     // 新建按钮
-                    <button class="btn btn-primary" on:click=move |_| set_show_create_doc.set(!show_create_doc.get())>
+                    <button class="btn btn-primary" on:click=move |_| {
+                        set_show_create_doc.set(!show_create_doc.get());
+                        // 重置表单
+                        set_new_doc_folder_id.set(None);
+                        set_new_doc_tag_ids.set(Vec::new());
+                    }>
                         "+ 新建"
                     </button>
 
@@ -1795,31 +1934,71 @@ fn DocumentsPage() -> impl IntoView {
                         </div>
 
                         <div style="margin-bottom: 20px;">
-                            <label style="display: block; margin-bottom: 6px; font-size: 14px; font-weight: 500;">"头像 URL"</label>
-                            <input
-                                type="text"
-                                placeholder="https://example.com/avatar.jpg"
-                                prop:value=move || edit_avatar_url.get()
-                                on:input=move |ev| set_edit_avatar_url.set(event_target_value(&ev))
-                                style="width: 100%; padding: 10px; border: 1px solid #E5E6EB; border-radius: 6px;"
-                            />
-                            <div style="margin-top: 8px; display: flex; align-items: center; gap: 12px;">
+                            <label style="display: block; margin-bottom: 6px; font-size: 14px; font-weight: 500;">"头像"</label>
+
+                            // 头像预览和上传区域
+                            <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 12px;">
                                 {move || {
                                     let url = edit_avatar_url.get();
                                     if url.is_empty() {
                                         view! {
-                                            <div style="width: 48px; height: 48px; background: #F2F3F5; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 24px;">"👤"</div>
+                                            <div style="width: 64px; height: 64px; background: #F2F3F5; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 32px;">"👤"</div>
                                         }
                                     } else {
                                         view! {
-                                            <div style="width: 48px; height: 48px; border-radius: 50%; overflow: hidden;">
-                                                <img src={url} alt="预览" style="width: 100%; height: 100%; object-fit: cover;" />
+                                            <div style="width: 64px; height: 64px; border-radius: 50%; overflow: hidden; border: 2px solid #E5E6EB;">
+                                                <img src={url} alt="头像预览" style="width: 100%; height: 100%; object-fit: cover;" />
                                             </div>
                                         }
                                     }
                                 }}
-                                <span style="font-size: 12px; color: #86909C;">"头像预览"</span>
+                                <div>
+                                    <input
+                                        type="file"
+                                        accept="image/jpeg,image/png,image/gif,image/webp"
+                                        on:change=upload_avatar
+                                        style="display: none;"
+                                        id="avatar-upload-input"
+                                    />
+                                    <label
+                                        for="avatar-upload-input"
+                                        style="display: inline-block; padding: 8px 16px; background: #3B82F6; color: white; border-radius: 6px; cursor: pointer; font-size: 14px;"
+                                        class="btn-sm"
+                                    >
+                                        {move || if avatar_uploading.get() { "上传中..." } else { "选择图片" } }
+                                    </label>
+                                    <div style="margin-top: 4px; font-size: 12px; color: #86909C;">"支持 JPG、PNG、GIF、WebP"</div>
+                                </div>
                             </div>
+
+                            // 或者使用 URL 输入
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span style="font-size: 12px; color: #86909C;">"或输入 URL:"</span>
+                                <input
+                                    type="text"
+                                    placeholder="https://example.com/avatar.jpg"
+                                    prop:value=move || edit_avatar_url.get()
+                                    on:input=move |ev| set_edit_avatar_url.set(event_target_value(&ev))
+                                    style="flex: 1; padding: 8px 12px; border: 1px solid #E5E6EB; border-radius: 6px; font-size: 14px;"
+                                />
+                            </div>
+                        </div>
+
+                        <div style="display: flex; gap: 8px; margin-top: 16px;">
+                            <button
+                                class="btn btn-primary"
+                                style="flex: 1;"
+                                on:click=update_profile
+                            >
+                                "保存"
+                            </button>
+                            <button
+                                class="btn btn-secondary"
+                                style="flex: 1;"
+                                on:click=move |_| set_show_profile_modal.set(false)
+                            >
+                                "取消"
+                            </button>
                         </div>
 
                         <div style="border-top: 1px solid #E5E6EB; margin-top: 16px; padding-top: 16px;">
@@ -2102,6 +2281,80 @@ fn DocumentsPage() -> impl IntoView {
                                     on:input=move |ev| set_new_doc_title.set(event_target_value(&ev))
                                     class="input-lg"
                                 />
+
+                                // 文件夹选择
+                                <div style="margin: 16px 0;">
+                                    <label style="display: block; margin-bottom: 8px; font-size: 14px; font-weight: 500;">"文件夹（可选）"</label>
+                                    <select
+                                        style="width: 100%; padding: 10px; border: 1px solid #E5E6EB; border-radius: 6px;"
+                                        on:change=move |ev| {
+                                            let value = event_target_value(&ev);
+                                            set_new_doc_folder_id.set(if value.is_empty() { None } else { Some(value) });
+                                        }
+                                    >
+                                        <option value="">"无文件夹"</option>
+                                        {
+                                            let folders_rc = folders.clone();
+                                            move || {
+                                                folders_rc.get().into_iter().map(|folder| {
+                                                    let id = folder.id.clone();
+                                                    let name = folder.name.clone();
+                                                    view! {
+                                                        <option value={id.clone()} selected=move || new_doc_folder_id.get().as_ref() == Some(&id)>{name}</option>
+                                                    }
+                                                }).collect::<Vec<_>>()
+                                            }
+                                        }
+                                    </select>
+                                </div>
+
+                                // 标签选择
+                                <div style="margin: 16px 0;">
+                                    <label style="display: block; margin-bottom: 8px; font-size: 14px; font-weight: 500;">"标签（可多选）"</label>
+                                    <div style="display: flex; flex-wrap: wrap; gap: 8px; padding: 12px; border: 1px solid #E5E6EB; border-radius: 6px; min-height: 50px;">
+                                        {
+                                            let tags_rc = tags.clone();
+                                            let set_selected = set_new_doc_tag_ids.clone();
+                                            move || {
+                                                tags_rc.get().into_iter().map(|tag_with_count| {
+                                                    let tag_id = tag_with_count.id.clone();
+                                                    let color = tag_with_count.color.clone();
+                                                    let set_selected_clone = set_selected.clone();
+                                                    let tag_id_clone = tag_id.clone();
+                                                    view! {
+                                                        <label
+                                                            style=move || format!(
+                                                                "display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 20px; cursor: pointer; border: 1px solid {}; background: {};",
+                                                                color.clone(),
+                                                                color.clone()
+                                                            )
+                                                        >
+                                                            <input
+                                                                type="checkbox"
+                                                                prop:checked=move || new_doc_tag_ids.get().contains(&tag_id)
+                                                                on:change=move |ev| {
+                                                                    let checked = event_target_checked(&ev);
+                                                                    let mut current = new_doc_tag_ids.get();
+                                                                    if checked {
+                                                                        current.push(tag_id_clone.clone());
+                                                                    } else {
+                                                                        current.retain(|id| id != &tag_id_clone);
+                                                                    }
+                                                                    set_selected_clone.set(current);
+                                                                }
+                                                                style="display: none;"
+                                                            />
+                                                            <span style="font-size: 13px; color: white;">
+                                                                {&tag_with_count.name}
+                                                            </span>
+                                                        </label>
+                                                    }
+                                                }).collect::<Vec<_>>()
+                                            }
+                                        }
+                                    </div>
+                                </div>
+
                                 <div class="form-actions">
                                     <button class="btn btn-primary" on:click=create_document>"创建"</button>
                                     <button class="btn btn-secondary" on:click=move |_| set_show_create_doc.set(false)>"取消"</button>
@@ -2174,7 +2427,7 @@ fn EditorPage() -> impl IntoView {
     let (content, set_content) = create_signal(String::new());
     let (loading, set_loading) = create_signal(true);
     let (saving, set_saving) = create_signal(false);
-    let (error, set_error) = create_signal(None::<String>);
+    let (error, set_error) = create_signal::<Option<String>>(None);
     let (syncing, set_syncing) = create_signal(false); // 同步状态
     let (last_sync_time, set_last_sync_time) = create_signal(None::<f64>); // 上次同步时间
 
@@ -2190,12 +2443,26 @@ fn EditorPage() -> impl IntoView {
 
     // WebSocket 和实时协作
     let (ws, set_ws) = create_signal(None::<web_sys::WebSocket>);
-    let (online_users, set_online_users) = create_signal(Vec::<(String, String, usize, usize)>::new()); // (user_id, nickname, line, column)
+    // online_users 存储其他用户的 awareness 状态
+    let (online_users, set_online_users) = create_signal(Vec::<AwarenessState>::new());
     let (ws_connected, set_ws_connected) = create_signal(false);
+
+    // 当前用户信息
+    let (current_user, set_current_user) = create_signal(None::<UserResponse>);
 
     // 当前用户的光标位置（用于发送给其他用户）
     let (cursor_line, set_cursor_line) = create_signal(0usize);
     let (cursor_column, set_cursor_column) = create_signal(0usize);
+
+    // 为每个用户生成颜色（基于用户ID）
+    fn get_user_color(user_id: &str) -> &'static str {
+        let colors = [
+            "#FF6B6B", "#4ECDC4", "#45B7D1", "#FFA07A", "#98D8C8",
+            "#F7DC6F", "#BB8FCE", "#85C1E2", "#F8B195", "#C4E538"
+        ];
+        let hash = user_id.chars().map(|c| c as usize).sum::<usize>() % colors.len();
+        colors[hash]
+    }
 
     // 评论系统
     let (comments, set_comments) = create_signal(Vec::<CommentListItem>::new());
@@ -2301,6 +2568,16 @@ fn EditorPage() -> impl IntoView {
                 }
             });
 
+            // 加载当前用户信息
+            let token_clone = token.clone();
+            let set_current_user_clone = set_current_user.clone();
+            spawn_local(async move {
+                match fetch_current_user(&token_clone).await {
+                    Ok(user) => set_current_user_clone.set(Some(user)),
+                    Err(e) => leptos::logging::error!("加载用户信息失败: {}", e),
+                }
+            });
+
             // 建立 WebSocket 连接
             let ws_url = format!("{}/ws/documents/{}?token={}", WS_BASE, id, token);
             match web_sys::WebSocket::new(&ws_url) {
@@ -2351,15 +2628,14 @@ fn EditorPage() -> impl IntoView {
                                     }
                                     WsMessage::UserJoined { user_id, nickname } => {
                                         leptos::logging::log!("用户加入: {} ({})", nickname, user_id);
-                                        let mut users = online_users.get();
-                                        users.push((user_id.clone(), nickname.clone(), 0, 0));
-                                        set_online_users.set(users);
+                                        // 不需要在这里添加到 online_users，
+                                        // 因为我们会通过 Awareness 消息获取完整的用户信息
                                     }
                                     WsMessage::UserLeft { user_id } => {
                                         leptos::logging::log!("用户离开: {}", user_id);
                                         let users: Vec<_> = online_users.get()
                                             .into_iter()
-                                            .filter(|(id, _, _, _)| id != &user_id)
+                                            .filter(|u| u.user.user_id != user_id)
                                             .collect();
                                         set_online_users.set(users);
                                     }
@@ -2368,21 +2644,14 @@ fn EditorPage() -> impl IntoView {
                                         let mut users = online_users.get();
                                         let mut found = false;
                                         for user in &mut users {
-                                            if user.0 == state.user_id {
-                                                user.2 = state.cursor.as_ref().map(|c| c.line).unwrap_or(0);
-                                                user.3 = state.cursor.as_ref().map(|c| c.column).unwrap_or(0);
+                                            if user.user.user_id == state.user.user_id {
+                                                *user = state.clone();
                                                 found = true;
                                                 break;
                                             }
                                         }
                                         if !found {
-                                            // 新用户通过 awareness 加入
-                                            users.push((
-                                                state.user_id.clone(),
-                                                state.nickname.unwrap_or_default(),
-                                                state.cursor.as_ref().map(|c| c.line).unwrap_or(0),
-                                                state.cursor.as_ref().map(|c| c.column).unwrap_or(0),
-                                            ));
+                                            users.push(state);
                                         }
                                         set_online_users.set(users);
                                     }
@@ -2695,12 +2964,28 @@ fn EditorPage() -> impl IntoView {
     };
 
     // 发送 Awareness 状态（光标位置）
-    let send_awareness = move |line: usize, column: usize| {
+    let send_awareness = move |line: u32, column: u32| {
         if let Some(websocket) = ws.get() {
+            // 获取当前用户信息
+            let user_info = if let Some(user) = current_user.get() {
+                UserInfo {
+                    user_id: user.id,
+                    nickname: user.nickname,
+                    avatar_url: user.avatar_url,
+                }
+            } else {
+                UserInfo {
+                    user_id: "".to_string(),
+                    nickname: "Unknown".to_string(),
+                    avatar_url: None,
+                }
+            };
+
             let awareness_state = AwarenessState {
-                user_id: "".to_string(), // 后端会从 token 中提取
-                nickname: None,
+                user: user_info,
                 cursor: Some(CursorPosition { line, column }),
+                selection: None,
+                color: get_user_color(&current_user.get().map(|u| u.id).unwrap_or_default()).to_string(),
             };
 
             let msg = WsMessage::Awareness {
@@ -2850,34 +3135,48 @@ fn EditorPage() -> impl IntoView {
                         "← 返回"
                     </button>
 
-                    // 在线用户显示
+                    // 在线用户显示（包含当前用户）
                     <div style="display: flex; align-items: center; gap: 4px; padding: 4px 8px; background: #F5F6F7; border-radius: 16px;">
-                        {move || if online_users.get().is_empty() {
-                            view! {
-                                <span style="font-size: 12px; color: #86909C;">
-                                    {move || if ws_connected.get() { "● 仅我" } else { "○ 离线" }}
-                                </span>
-                            }.into_view()
-                        } else {
-                            view! {
-                                <>
-                                    <span style="font-size: 12px; color: #10b981;">"●"</span>
+                        <span style="font-size: 12px; color: #10b981;">"●"</span>
+                        // 当前用户
+                        {move || {
+                            let user_opt = current_user.get();
+                            if let Some(user) = user_opt {
+                                view! {
+                                    <span
+                                        style="font-size: 12px; color: #1D2129; padding: 2px 6px; background: white; border-radius: 10px; font-weight: 500;"
+                                    >
+                                        {user.nickname}
+                                    </span>
+                                }.into_view()
+                            } else {
+                                view! { <span style="font-size: 12px; color: #86909C;">"..."</span> }.into_view()
+                            }
+                        }}
+                        // 其他在线用户
+                        {move || {
+                            let others = online_users.get();
+                            if !others.is_empty() {
+                                view! {
                                     <For
                                         each=move || online_users.get()
-                                        key=|(id, _, _, _)| id.clone()
-                                        children=|(_, nickname, _, _): (String, String, usize, usize)| {
+                                        key=|state| state.user.user_id.clone()
+                                        children=|state: AwarenessState| {
+                                            let color = &state.color;
                                             view! {
                                                 <span
-                                                    style="font-size: 12px; color: #4E5969; padding: 2px 6px; background: white; border-radius: 10px; margin-left: 2px;"
-                                                    title={nickname.clone()}
+                                                    style=format!("font-size: 12px; color: #4E5969; padding: 2px 6px; background: {}; border-radius: 10px; margin-left: 2px;", color)
+                                                    title={state.user.nickname.clone()}
                                                 >
-                                                    {&nickname}
+                                                    {&state.user.nickname}
                                                 </span>
                                             }
                                         }
                                     />
-                                </>
-                            }.into_view()
+                                }.into_view()
+                            } else {
+                                view! { }.into_view()
+                            }
                         }}
                     </div>
 
@@ -2964,10 +3263,10 @@ fn EditorPage() -> impl IntoView {
                                     if let Some(textarea) = ev.target().and_then(|t| t.dyn_into::<web_sys::HtmlTextAreaElement>().ok()) {
                                         let text = textarea.value();
                                         // 简化：使用文本长度作为光标位置的近似值
-                                        let position = text.chars().count();
-                                        let line = text.chars().filter(|&c| c == '\n').count() + 1;
-                                        set_cursor_line.set(line);
-                                        set_cursor_column.set(position);
+                                        let position = text.chars().count() as u32;
+                                        let line = (text.chars().filter(|&c| c == '\n').count() + 1) as u32;
+                                        set_cursor_line.set(line as usize);
+                                        set_cursor_column.set(position as usize);
 
                                         // 发送 awareness 状态
                                         send_awareness(line, position);
@@ -2978,14 +3277,46 @@ fn EditorPage() -> impl IntoView {
                                     use wasm_bindgen::JsCast;
                                     if let Some(textarea) = ev.target().and_then(|t| t.dyn_into::<web_sys::HtmlTextAreaElement>().ok()) {
                                         let text = textarea.value();
-                                        let position = text.chars().count();
-                                        let line = text.chars().filter(|&c| c == '\n').count() + 1;
-                                        set_cursor_line.set(line);
-                                        set_cursor_column.set(position);
+                                        let position = text.chars().count() as u32;
+                                        let line = (text.chars().filter(|&c| c == '\n').count() + 1) as u32;
+                                        set_cursor_line.set(line as usize);
+                                        set_cursor_column.set(position as usize);
                                         send_awareness(line, position);
                                     }
                                 }
                             />
+
+                            // 其他用户光标指示器
+                            <div style="position: relative; margin-top: 8px; min-height: 24px;">
+                                {move || {
+                                    let users = online_users.get();
+                                    if users.is_empty() {
+                                        view! { }.into_view()
+                                    } else {
+                                        view! {
+                                            <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
+                                                <span style="font-size: 11px; color: #86909C;">"其他用户光标:"</span>
+                                                {users.into_iter().map(|state| {
+                                                    let line = state.cursor.as_ref().map(|c| c.line).unwrap_or(0);
+                                                    let color = &state.color;
+                                                    let line_text = format!("行:{}", line);
+                                                    view! {
+                                                        <div
+                                                            style=format!(
+                                                                "display: flex; align-items: center; gap: 4px; padding: 2px 6px; background: {}; border-radius: 4px; font-size: 11px; color: white;",
+                                                                color
+                                                            )
+                                                        >
+                                                            <span style="font-weight: 500;">{&state.user.nickname}</span>
+                                                            <span style="opacity: 0.8;">{line_text}</span>
+                                                        </div>
+                                                    }
+                                                }).collect::<Vec<_>>()}
+                                            </div>
+                                        }.into_view()
+                                    }
+                                }}
+                            </div>
 
                             {move || error.get().map(|e| view! {
                                 <div class="message">{e}</div>
@@ -3027,13 +3358,18 @@ fn EditorPage() -> impl IntoView {
                                         view! {
                                             <For
                                                 each=move || online_users.get()
-                                                key=|(id, _, _, _)| id.clone()
-                                                children=|(id, nickname, line, column): (String, String, usize, usize)| {
+                                                key=|state| state.user.user_id.clone()
+                                                children=|state: AwarenessState| {
+                                                    let line = state.cursor.as_ref().map(|c| c.line).unwrap_or(0);
+                                                    let color = &state.color;
                                                     view! {
-                                                        <div style="font-size: 14px; padding: 4px 0; color: #10b981;">
-                                                            "● "{nickname}
+                                                        <div style="display: flex; align-items: center; gap: 8px; padding: 4px 0;">
+                                                            <div
+                                                                style=format!("width: 12px; height: 12px; border-radius: 50%; background: {};", color)
+                                                            ></div>
+                                                            <span style="font-size: 14px; flex: 1;">{&state.user.nickname}</span>
                                                             <span style="color: #999; font-size: 12px;">
-                                                                "(行: "{line}", 列: "{column}")"
+                                                                "行:{line}"
                                                             </span>
                                                         </div>
                                                     }

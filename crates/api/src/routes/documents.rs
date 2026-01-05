@@ -249,6 +249,9 @@ async fn search_documents(
     user: AuthUser,
     Query(search): Query<SearchQuery>,
 ) -> AppResult<Json<Vec<DocumentListItem>>> {
+    // 检查用户是否是管理员
+    let is_admin = PermissionService::is_admin(&pool, user.user_id).await?;
+
     let documents = DocumentRepository::search(
         &pool,
         user.user_id,
@@ -258,6 +261,7 @@ async fn search_documents(
         search.is_public,
         search.limit,
         search.offset,
+        is_admin,  // 传递管理员状态
     )
     .await?;
 

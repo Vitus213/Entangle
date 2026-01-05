@@ -26,6 +26,7 @@ pub enum BroadcastMessage {
     /// 用户加入
     UserJoined {
         user_id: Uuid,
+        nickname: String,
     },
     /// 用户离开
     UserLeft {
@@ -100,7 +101,7 @@ impl DocumentRoom {
     }
 
     /// 用户加入房间
-    pub fn user_join(&self, user_id: Uuid) {
+    pub fn user_join(&self, user_id: Uuid, nickname: String) {
         {
             let mut connections = self.connections.write().unwrap();
             connections.insert(
@@ -112,7 +113,7 @@ impl DocumentRoom {
             );
         }
         // 广播用户加入消息
-        let _ = self.broadcast_tx.send(BroadcastMessage::UserJoined { user_id });
+        let _ = self.broadcast_tx.send(BroadcastMessage::UserJoined { user_id, nickname });
     }
 
     /// 用户离开房间
@@ -308,8 +309,8 @@ mod tests {
         let user2 = Uuid::new_v4();
 
         // 用户加入
-        room.user_join(user1);
-        room.user_join(user2);
+        room.user_join(user1, "User 1".to_string());
+        room.user_join(user2, "User 2".to_string());
 
         assert_eq!(room.get_user_count(), 2);
 
@@ -332,7 +333,7 @@ mod tests {
         assert_eq!(manager.get_active_room_count(), 2);
 
         // 用户加入房间1
-        room1.user_join(Uuid::new_v4());
+        room1.user_join(Uuid::new_v4(), "Test User".to_string());
 
         // 移除空房间
         manager.remove_room_if_empty(&doc_id2);
@@ -345,17 +346,17 @@ mod tests {
         let room = DocumentRoom::new(doc_id);
 
         let user1 = Uuid::new_v4();
-        let user2 = Uuid::new_v4();
 
         // 订阅广播
         let mut rx = room.subscribe();
 
         // 用户加入
-        room.user_join(user1);
+        room.user_join(user1, "Test User".to_string());
 
         // 接收广播消息
-        if let Ok(BroadcastMessage::UserJoined { user_id }) = rx.recv().await {
+        if let Ok(BroadcastMessage::UserJoined { user_id, nickname }) = rx.recv().await {
             assert_eq!(user_id, user1);
+            assert_eq!(nickname, "Test User");
         } else {
             panic!("Expected UserJoined message");
         }

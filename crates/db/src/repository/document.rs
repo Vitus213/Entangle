@@ -473,13 +473,19 @@ impl DocumentRepository {
         is_public: Option<bool>,
         limit: i64,
         offset: i64,
+        is_admin: bool,  // 新增：管理员标识
     ) -> Result<Vec<DocumentListItem>, sqlx::Error> {
-        let mut conditions = vec![
-            "(d.owner_id = $1 OR EXISTS (
-                SELECT 1 FROM document_collaborators dc
-                WHERE dc.document_id = d.id AND dc.user_id = $1
-            ) OR d.is_public = true)".to_string()
-        ];
+        let mut conditions = vec![];
+
+        // 只有非管理员才需要添加权限条件
+        if !is_admin {
+            conditions.push(
+                "(d.owner_id = $1 OR EXISTS (
+                    SELECT 1 FROM document_collaborators dc
+                    WHERE dc.document_id = d.id AND dc.user_id = $1
+                ) OR d.is_public = true)".to_string()
+            );
+        }
 
         let mut param_count = 1;
 
@@ -522,7 +528,11 @@ impl DocumentRepository {
             None
         };
 
-        let where_clause = conditions.join(" AND ");
+        let where_clause = if conditions.is_empty() {
+            "1=1".to_string()  // 管理员搜索所有文档时，使用无条件语句
+        } else {
+            conditions.join(" AND ")
+        };
 
         param_count += 1;
         let limit_param = param_count;
@@ -543,7 +553,12 @@ impl DocumentRepository {
             where_clause, limit_param, offset_param
         );
 
-        let mut query_builder = sqlx::query(&sql).bind(user_id);
+        // 只有非管理员才绑定 user_id
+        let mut query_builder = if is_admin {
+            sqlx::query(&sql)
+        } else {
+            sqlx::query(&sql).bind(user_id)
+        };
 
         if let Some(ref title) = title_param {
             query_builder = query_builder.bind(title);
