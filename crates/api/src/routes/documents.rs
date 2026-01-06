@@ -8,7 +8,7 @@ use entangle_auth::PermissionService;
 use entangle_core::{AppError, AppResult, DocumentPermissionService};
 use entangle_db::{
     models::{
-        AddCollaborator, AddCollaboratorByEmail, CreateDocument, DocumentListItem,
+        AddCollaboratorByEmail, CreateDocument, DocumentListItem,
         DocumentResponse, UpdateDocument,
     },
     DocumentRepository,

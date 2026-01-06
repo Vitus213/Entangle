@@ -15,6 +15,9 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use uuid::Uuid;
 
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64;
+
 use crate::middleware::AuthUser;
 
 #[derive(Debug, Serialize)]
@@ -316,7 +319,7 @@ async fn upload_avatar(
                 _ => "image/jpeg",
             };
 
-            let base64_data = base64::encode(&data);
+            let base64_data = BASE64.encode(&data);
             let avatar_url = format!("data:{};base64,{}", mime_type, base64_data);
 
             // 获取当前用户信息

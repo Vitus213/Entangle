@@ -12,6 +12,7 @@ use ws::WsHub;
 
 /// Application state
 #[derive(Clone)]
+#[allow(dead_code)]
 struct AppState {
     pool: PgPool,
     ws_hub: WsHub,

@@ -53,16 +53,10 @@ impl PermissionRepository {
         action: &str,
         description: Option<&str>,
     ) -> Result<Permission, sqlx::Error> {
-        let permission_id = Uuid::new_v4();
-
         sqlx::query_as::<_, Permission>(
-            r#"
-            INSERT INTO permissions (id, name, resource, action, description)
-            VALUES ($1, $2, $3, $4, $5)
-            RETURNING *
-            "#,
+            "INSERT INTO permissions (id, name, resource, action, description) VALUES ($1, $2, $3, $4, $5) RETURNING *"
         )
-        .bind(permission_id)
+        .bind(Uuid::new_v4())
         .bind(name)
         .bind(resource)
         .bind(action)
@@ -81,12 +75,7 @@ impl PermissionRepository {
         description: Option<&str>,
     ) -> Result<Permission, sqlx::Error> {
         sqlx::query_as::<_, Permission>(
-            r#"
-            UPDATE permissions
-            SET name = $1, resource = $2, action = $3, description = $4
-            WHERE id = $5
-            RETURNING *
-            "#,
+            "UPDATE permissions SET name = $1, resource = $2, action = $3, description = $4 WHERE id = $5 RETURNING *"
         )
         .bind(name)
         .bind(resource)
@@ -99,11 +88,7 @@ impl PermissionRepository {
 
     /// Delete permission
     pub async fn delete(pool: &PgPool, permission_id: Uuid) -> Result<(), sqlx::Error> {
-        sqlx::query("DELETE FROM permissions WHERE id = $1")
-            .bind(permission_id)
-            .execute(pool)
-            .await?;
-        Ok(())
+        crate::repository::crud::delete("permissions", pool, permission_id).await
     }
 
     /// Check if user has specific permission
@@ -112,23 +97,16 @@ impl PermissionRepository {
         user_id: Uuid,
         permission_name: &str,
     ) -> Result<bool, sqlx::Error> {
-        let result = sqlx::query_scalar::<_, bool>(
-            r#"
-            SELECT EXISTS(
-                SELECT 1
-                FROM users u
-                JOIN role_permissions rp ON u.role_id = rp.role_id
-                JOIN permissions p ON rp.permission_id = p.id
-                WHERE u.id = $1 AND p.name = $2
-            )
-            "#,
+        sqlx::query_scalar::<_, bool>(
+            "SELECT EXISTS(SELECT 1 FROM users u
+             JOIN role_permissions rp ON u.role_id = rp.role_id
+             JOIN permissions p ON rp.permission_id = p.id
+             WHERE u.id = $1 AND p.name = $2)"
         )
         .bind(user_id)
         .bind(permission_name)
         .fetch_one(pool)
-        .await?;
-
-        Ok(result)
+        .await
     }
 
     /// Get all permissions for a user
@@ -136,19 +114,14 @@ impl PermissionRepository {
         pool: &PgPool,
         user_id: Uuid,
     ) -> Result<Vec<String>, sqlx::Error> {
-        let rows = sqlx::query!(
-            r#"
-            SELECT DISTINCT p.name
-            FROM users u
-            JOIN role_permissions rp ON u.role_id = rp.role_id
-            JOIN permissions p ON rp.permission_id = p.id
-            WHERE u.id = $1
-            "#,
-            user_id
+        sqlx::query_scalar::<_, String>(
+            "SELECT DISTINCT p.name FROM users u
+             JOIN role_permissions rp ON u.role_id = rp.role_id
+             JOIN permissions p ON rp.permission_id = p.id
+             WHERE u.id = $1"
         )
+        .bind(user_id)
         .fetch_all(pool)
-        .await?;
-
-        Ok(rows.into_iter().map(|row| row.name).collect())
+        .await
     }
 }

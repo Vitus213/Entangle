@@ -7,7 +7,7 @@ use axum::{
 use entangle_core::{AppError, AppResult, DocumentPermissionService};
 use entangle_db::{
     models::{AddTagToDocument, CreateTag, SetDocumentTags, TagSummary, TagWithCount, UpdateTag},
-    DocumentRepository, TagRepository,
+    TagRepository,
 };
 use serde::Deserialize;
 use sqlx::PgPool;
@@ -56,7 +56,7 @@ async fn update_tag(
     }
 
     // 更新标签
-    let tag = TagRepository::update(&pool, tag_id, &update_data).await?;
+    let _tag = TagRepository::update(&pool, tag_id, &update_data).await?;
 
     // 获取文档计数
     let tags = TagRepository::list_by_owner(&pool, user.user_id).await?;

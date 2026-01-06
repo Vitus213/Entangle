@@ -96,33 +96,39 @@ impl CrdtManager {
     }
 
     /// 获取 Doc 引用（用于设置观察者）
+    #[allow(dead_code)]
     pub fn get_doc(&self) -> Rc<Doc> {
         self.doc.clone()
     }
 
     /// 获取文本名称
+    #[allow(dead_code)]
     pub fn get_text_name(&self) -> &str {
         &self.text_name
     }
 
     /// 将文档内容同步到 textarea
+    #[allow(dead_code)]
     pub fn sync_to_textarea(&self, textarea: &HtmlTextAreaElement) {
         let text = self.get_text();
         textarea.set_value(&text);
     }
 
     /// 从 textarea 同步内容到文档
+    #[allow(dead_code)]
     pub fn sync_from_textarea(&mut self, textarea: &HtmlTextAreaElement) {
         let value = textarea.value();
         self.set_text(&value);
     }
 
     /// 标记正在更新
+    #[allow(dead_code)]
     pub fn set_updating(&self, value: bool) {
         *self.updating.borrow_mut() = value;
     }
 
     /// 检查是否正在更新
+    #[allow(dead_code)]
     pub fn is_updating(&self) -> bool {
         *self.updating.borrow()
     }
